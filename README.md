@@ -71,12 +71,12 @@ own app content with `u()` as well if it should scale with the motion.
 GPUI can't transform boxes or text, so Metro's 3D turnstile is *projected*:
 an element turned about the screen's left edge is drawn at the span a
 perspective camera would see (`motion::turn`). Pages are clipped to that
-span at full size (uniform scaling would read as a zoom). Tiles shrink by the perspective
-factor as they turn away. Timings follow the WP Toolkit: pages swing in from
+span at full size (uniform scaling would read as a zoom). Tiles are clipped the same way, and
+their height follows the perspective. Timings follow the WP Toolkit: pages swing in from
 edge-on (the Toolkit's −80° and 50°, opened up so nothing pops), 350 ms on an
 exponential ease-out
 (exponent 6), with items feathered 40 ms apart. Tiles turnstile out to 90° on
-an ease-in, in reading order, with the tapped tile last.
+an ease-in, row by row from the top, with the tapped tile last.
 
 Only Metro's original motions are provided. Turnstile (pages) and
 turnstile feather (lists) cover entrances, `motion::exit_div` covers a page

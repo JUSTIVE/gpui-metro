@@ -19,7 +19,6 @@ use crate::{
     Icon, Theme,
     chrome::PAGE_MARGIN,
     motion::{self, ENTER, Turn, ease_in_exp6, ease_in_out_cubic, ease_out_exp6, turn},
-    scaled::scaled,
     theme::size,
 };
 
@@ -459,29 +458,36 @@ impl TileGrid {
 
 /// How long each tile takes to swing out.
 pub const EXIT_TILE: Duration = Duration::from_millis(250);
-/// Gap between neighbouring tiles in the wave (compressed on big grids).
-const EXIT_STEP: Duration = Duration::from_millis(22);
+/// Gap between rows in the wave (compressed on tall grids).
+const EXIT_STEP: Duration = Duration::from_millis(45);
 /// The whole wave (before the tapped tile) never takes longer than this.
 const EXIT_WAVE_MAX: Duration = Duration::from_millis(260);
 /// The tapped tile lingers this long after the last of the others starts.
 const EXIT_HOLD: Duration = Duration::from_millis(90);
 
+/// Rank of each tile's row among the rows in use (0 = top), so a feather
+/// moves whole rows: tiles side by side turn together and never cross.
+fn row_ranks(positions: &[(usize, usize)], skip: usize) -> (Vec<usize>, usize) {
+    let mut rows: Vec<usize> = positions.iter().enumerate().filter(|&(i, _)| i != skip).map(|(_, p)| p.1).collect();
+    rows.sort_unstable();
+    rows.dedup();
+    let ranks = positions.iter().map(|p| rows.binary_search(&p.1).unwrap_or(0)).collect();
+    (ranks, rows.len())
+}
+
 /// Start delays for the turnstile-out, per tile, plus the total time until
-/// the last tile has gone. Untapped tiles leave in reading order (row, then
-/// column); the tapped one goes last.
+/// the last tile has gone. Rows leave top to bottom, a whole row at once
+/// (the Toolkit's feather goes by vertical position); the tapped tile goes
+/// last, on its own.
 pub fn exit_schedule(positions: &[(usize, usize)], tapped: usize) -> (Vec<Duration>, Duration) {
-    let mut order: Vec<usize> = (0..positions.len()).filter(|&i| i != tapped).collect();
-    order.sort_by_key(|&i| (positions[i].1, positions[i].0));
-    let step = match order.len() {
+    let (ranks, rows) = row_ranks(positions, tapped);
+    let step = match rows {
         0 | 1 => EXIT_STEP,
         n => EXIT_STEP.min(EXIT_WAVE_MAX / (n as u32 - 1)),
     };
-    let mut delays = vec![Duration::ZERO; positions.len()];
-    for (rank, &i) in order.iter().enumerate() {
-        delays[i] = step * rank as u32;
-    }
-    let last_other = order.len().checked_sub(1).map(|r| step * r as u32);
-    let tapped_delay = last_other.map_or(Duration::ZERO, |d| d + EXIT_HOLD);
+    let mut delays: Vec<Duration> = ranks.iter().map(|&r| step * r as u32).collect();
+    let last_row = rows.checked_sub(1).map(|r| step * r as u32);
+    let tapped_delay = last_row.map_or(Duration::ZERO, |d| d + EXIT_HOLD);
     if tapped < delays.len() {
         delays[tapped] = tapped_delay;
     }
@@ -491,23 +497,18 @@ pub fn exit_schedule(positions: &[(usize, usize)], tapped: usize) -> (Vec<Durati
 /// Where a tile turns in from when the start screen appears: edge-on, so it
 /// opens from nothing rather than popping in half-turned.
 const ENTER_FROM_DEG: f32 = 90.;
-/// Gap between neighbouring tiles as they turn in.
-const ENTER_STEP: Duration = Duration::from_millis(20);
+/// Gap between rows as they turn in.
+const ENTER_STEP: Duration = Duration::from_millis(40);
 const ENTER_WAVE_MAX: Duration = Duration::from_millis(240);
 
-/// Start delays for the turnstile-in: reading order, top-left first.
+/// Start delays for the turnstile-in: rows top to bottom, a row at a time.
 pub fn enter_schedule(positions: &[(usize, usize)]) -> Vec<Duration> {
-    let mut order: Vec<usize> = (0..positions.len()).collect();
-    order.sort_by_key(|&i| (positions[i].1, positions[i].0));
-    let step = match order.len() {
+    let (ranks, rows) = row_ranks(positions, usize::MAX);
+    let step = match rows {
         0 | 1 => ENTER_STEP,
         n => ENTER_STEP.min(ENTER_WAVE_MAX / (n as u32 - 1)),
     };
-    let mut delays = vec![Duration::ZERO; positions.len()];
-    for (rank, &i) in order.iter().enumerate() {
-        delays[i] = step * rank as u32;
-    }
-    delays
+    ranks.iter().map(|&r| step * r as u32).collect()
 }
 
 /// A tile's place in the grid, for projecting it as it turns.
@@ -523,8 +524,8 @@ struct Cell {
 
 impl Cell {
     /// The tile turned by `degrees` about the hinge, as seen in perspective:
-    /// its span narrows toward the hinge, and it really shrinks (rem
-    /// scaling) by the perspective scale. Returns (span, scale, height).
+    /// its span narrows toward the hinge and its height follows the
+    /// perspective scale. Returns (span, scale, height).
     fn project(self, degrees: f32) -> (Turn, f32, f32) {
         let r = turn(self.x + self.hinge, self.w, degrees);
         let k = (r.scale_left + r.scale_right) / 2.;
@@ -532,18 +533,22 @@ impl Cell {
     }
 
     /// `tile` turned by `degrees`, drawn in the same structure whether it is
-    /// turning or at rest, so the tile (and its tilt) keeps its state.
+    /// turning or at rest, so the tile (and its tilt) keeps its state. The
+    /// tile is clipped to its projected span (narrower toward the hinge,
+    /// shorter by the perspective) but never rescaled: re-rasterising its
+    /// text and glyph at a new size every frame made it shimmer.
     fn render(self, tile: Tile, degrees: f32, visible: bool) -> AnyElement {
-        let (r, k, h) = self.project(degrees);
+        let (r, _, h) = self.project(degrees);
+        let crop = (self.h - h) / 2.;
         div()
             .absolute()
             .overflow_hidden()
             .left(u(r.left - self.hinge))
-            .top(u(self.y + (self.h - h) / 2.))
+            .top(u(self.y + crop))
             .w(u(r.width))
             .h(u(h))
             .opacity(if visible && r.width >= 1. { 1. } else { 0. })
-            .child(scaled(k).absolute().left_0().top_0().child(tile))
+            .child(div().absolute().left_0().top(u(-crop)).child(tile))
             .into_any_element()
     }
 }
@@ -810,9 +815,10 @@ mod tests {
         let sizes = [Wide, Medium, Small, Small];
         let positions = pack(&sizes, 4);
         let d = enter_schedule(&positions);
-        // wide (row 0), medium (row 2, col 0), then the two smalls beside it.
+        // wide (row 0) first; the medium and the two smalls beside it share row 2.
         assert_eq!(d[0], Duration::ZERO);
-        assert!(d.windows(2).all(|w| w[0] < w[1]), "{d:?}");
+        assert!(d[1] > d[0]);
+        assert_eq!((d[1], d[2], d[3]), (d[1], d[1], d[1]), "a row turns together: {d:?}");
         assert!(enter_schedule(&vec![(0, 0); 80]).iter().all(|&x| x <= ENTER_WAVE_MAX));
     }
 
