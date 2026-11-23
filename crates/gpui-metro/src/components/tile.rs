@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, ClickEvent, ElementId, Hsla, InteractiveElement, IntoElement,
+    AnyElement, App, ClickEvent, ElementId, Hsla, InteractiveElement, IntoElement,
     ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div,
     prelude::FluentBuilder,
 };
@@ -223,6 +223,59 @@ pub fn peek_offset(t: f32, slide: f32) -> f32 {
 /// How long one slide between faces takes, regardless of the cycle length.
 pub const PEEK_SLIDE_SECS: f32 = 0.9;
 
+/// Cycle-fraction until the next slide starts, or `None` mid-slide.
+pub fn peek_wait(t: f32, slide: f32) -> Option<f32> {
+    let slide = slide.clamp(0.001, 0.5);
+    match t {
+        t if t < 0.5 - slide => Some(0.5 - slide - t),
+        t if t < 0.5 => None,
+        t if t < 1. - slide => Some(1. - slide - t),
+        _ => None,
+    }
+}
+
+/// A live tile's clock: when it started, and the wake-up booked for its
+/// next slide.
+struct PeekClock {
+    start: Instant,
+    wake: Option<(Instant, gpui::Task<()>)>,
+}
+
+/// Where in its cycle (0–1) a live tile is now. Frames are requested only
+/// while it slides; resting on a face, it books one wake-up for the next
+/// slide instead. (A repeating animation redrew the whole window every
+/// frame, forever, for a tile that sits still 85% of the time.)
+fn peek_clock(id: &ElementId, period: f32, phase: f32, slide: f32, window: &mut Window, cx: &mut App) -> f32 {
+    let key = ElementId::from((SharedString::from(format!("{id}-peek")), 0usize));
+    let clock = window.use_keyed_state(key, cx, |_, _| PeekClock { start: Instant::now(), wake: None });
+    let now = Instant::now();
+    let start = clock.read(cx).start;
+    let t = (now.saturating_duration_since(start).as_secs_f32() / period + phase).fract();
+    match peek_wait(t, slide) {
+        None => window.request_animation_frame(),
+        Some(wait) => {
+            let view = window.current_view();
+            let weak = clock.downgrade();
+            let booked = clock.read(cx).wake.as_ref().is_some_and(|(at, _)| *at > now);
+            if !booked {
+                let dt = Duration::from_secs_f32(wait * period);
+                let task = window.spawn(cx, async move |cx| {
+                    cx.background_executor().timer(dt).await;
+                    cx.update(|_, cx| {
+                        // Cleared first: a timer that fires a hair early
+                        // must not leave a stale booking that blocks the next.
+                        weak.update(cx, |c, _| c.wake = None).ok();
+                        cx.notify(view);
+                    })
+                    .ok();
+                });
+                clock.update(cx, |c, _| c.wake = Some((now + dt, task)));
+            }
+        }
+    }
+    t
+}
+
 impl RenderOnce for Tile {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = Theme::palette(cx);
@@ -259,24 +312,20 @@ impl RenderOnce for Tile {
         let body: AnyElement = match self.back {
             Some(back) if !reduced => {
                 let back = back(size, bg);
-                let period = Duration::from_secs_f32(self.period);
-                let phase = self.phase;
+                let period = self.period;
                 let slide = PEEK_SLIDE_SECS / self.period;
+                let t = peek_clock(&self.id, period, self.phase, slide, window, cx);
                 // The strip holds both faces stacked; it rides up by one face.
                 div()
                     .absolute()
                     .left_0()
+                    .top(u(-h * peek_offset(t, slide)))
                     .w(u(w))
                     .h(u(h * 2.))
                     .flex()
                     .flex_col()
                     .child(face(front, true))
                     .child(face(back, true))
-                    .with_animation(
-                        ElementId::from((SharedString::from(format!("{}-peek", self.id)), 0usize)),
-                        Animation::new(period).repeat(),
-                        move |el, t| el.top(u(-h * peek_offset((t + phase).fract(), slide))),
-                    )
                     .into_any_element()
             }
             _ => face(front, true).into_any_element(),
@@ -653,11 +702,9 @@ impl RenderOnce for TileGrid {
         let enter_delays = enter_schedule(&positions);
         let exit_delays = state.and_then(|(_, exit)| exit).map(|(t, _)| exit_schedule(&positions, t).0);
         // Exit length per tapped tile, so each click knows when to launch.
-        let totals: Vec<Duration> = if motion.is_some() {
-            (0..positions.len()).map(|t| exit_schedule(&positions, t).1).collect()
-        } else {
-            Vec::new()
-        };
+        // Each click works out its own exit length when it happens; doing it
+        // for every tile here cost O(n²) per frame for a value used once.
+        let positions = Rc::new(positions);
 
         // Each tile's angle now, and whether it is still moving.
         let pose = |ix: usize| -> (f32, bool, bool) {
@@ -695,7 +742,7 @@ impl RenderOnce for TileGrid {
             .for_each(|(ix, (mut t, (x, y)))| {
                 // Route the click through the exit: animate first, launch after.
                 if let (Some(motion), Some(launch)) = (motion.clone(), t.on_click.take()) {
-                    let total = totals[ix];
+                    let positions = positions.clone();
                     t.on_click = Some(Rc::new(move |e: &ClickEvent, window: &mut Window, cx: &mut App| {
                         let started = motion.update(cx, |m, cx| {
                             if m.exit.is_some() {
@@ -708,6 +755,7 @@ impl RenderOnce for TileGrid {
                         if !started {
                             return;
                         }
+                        let total = exit_schedule(&positions, ix).1;
                         let (e, launch, motion) = (e.clone(), launch.clone(), motion.clone());
                         window
                             .spawn(cx, async move |cx| {
@@ -844,6 +892,20 @@ mod tests {
         assert!(total <= EXIT_WAVE_MAX + EXIT_HOLD + EXIT_TILE, "{total:?}");
         let (delays, total) = exit_schedule(&[(0, 0)], 0);
         assert_eq!((delays[0], total), (Duration::ZERO, EXIT_TILE));
+    }
+
+    #[test]
+    fn a_resting_tile_waits_exactly_until_its_next_slide() {
+        let slide = 0.1;
+        assert!((peek_wait(0.1, slide).unwrap() - 0.3).abs() < 1e-6);
+        assert_eq!(peek_wait(0.45, slide), None, "mid-slide: draw every frame");
+        assert!((peek_wait(0.6, slide).unwrap() - 0.3).abs() < 1e-6);
+        assert_eq!(peek_wait(0.95, slide), None);
+        // Wherever it waits, the face doesn't move until the wait is over.
+        for t in [0.0, 0.2, 0.39, 0.5, 0.7, 0.89] {
+            let w = peek_wait(t, slide).unwrap();
+            assert_eq!(peek_offset(t, slide), peek_offset(t + w * 0.999, slide), "t = {t}");
+        }
     }
 
     #[test]
