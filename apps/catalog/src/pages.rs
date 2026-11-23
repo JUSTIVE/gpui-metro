@@ -272,7 +272,7 @@ text(TextStyle::Subtle, "last synced 2 min ago")
 TextStyle::Large.styled(cx).child("strains")"#
             }
             Page::Icons => {
-                r#"Application::new()
+                r#"gpui_platform::application()
     .with_assets(gpui_metro::Assets::new())
 
 Icon::Mail.render(px(32.), p.foreground)

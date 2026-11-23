@@ -17,17 +17,19 @@ cargo run -p no-ativ
 cargo test -p gpui-metro
 ```
 
-GPUI is pinned to `0.2.2` with `runtime_shaders`, so the build does not need
-Xcode's Metal Toolchain. Shaders compile when the app starts.
+GPUI comes from [Zed's repository](https://github.com/zed-industries/zed),
+pinned to a rev in the workspace `Cargo.toml`. Apps start through
+`gpui_platform::application()`, which is built with `runtime_shaders`, so
+Xcode's Metal Toolchain is not needed; shaders compile when the app starts.
+To move to a newer Zed, bump `rev` on both `gpui` and `gpui_platform` together.
 
 ## Using the library
 
 ```rust
-use gpui::*;
 use gpui_metro::prelude::*;
 
 fn main() {
-    Application::new().with_assets(gpui_metro::Assets::new()).run(|cx| {
+    gpui_platform::application().with_assets(gpui_metro::Assets::new()).run(|cx| {
         gpui_metro::init(cx);                 // dark ground, cobalt accent, text-input keys
         Theme::set_accent(Accent::Lime, cx);  // any of the 20 WP8 accents
         // cx.open_window(...) and render components from a view

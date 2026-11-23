@@ -7,7 +7,7 @@
 //! use gpui::*;
 //! use gpui_metro::prelude::*;
 //!
-//! Application::new().with_assets(gpui_metro::Assets::new()).run(|cx| {
+//! gpui_platform::application().with_assets(gpui_metro::Assets::new()).run(|cx| {
 //!     gpui_metro::init(cx);
 //!     Theme::set_accent(Accent::Cobalt, cx);
 //!     // open a window and render tiles, pivots, …

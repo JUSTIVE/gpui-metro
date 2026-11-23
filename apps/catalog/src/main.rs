@@ -13,20 +13,20 @@ mod phone;
 mod sidebar;
 mod topbar;
 
-use gpui::{App, AppContext, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
+use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 use gpui_metro::{Mode, Theme};
 
 use crate::{app::Catalog, pages::Page};
 
 fn main() {
-    Application::new().with_assets(gpui_metro::Assets::new()).run(|cx: &mut App| {
+    gpui_platform::application().with_assets(gpui_metro::Assets::new()).run(|cx: &mut App| {
         gpui_metro::init(cx);
         if std::env::var("CATALOG_MODE").is_ok_and(|m| m.eq_ignore_ascii_case("light")) {
             Theme::set_mode(Mode::Light, cx);
         }
         let page = std::env::var("CATALOG_PAGE").ok().and_then(|p| Page::find(&p)).unwrap_or(Page::Palette);
 
-        cx.on_window_closed(|cx| {
+        cx.on_window_closed(|cx, _| {
             if cx.windows().is_empty() {
                 cx.quit();
             }

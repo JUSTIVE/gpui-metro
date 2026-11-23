@@ -8,7 +8,10 @@ version = "0.1.0"
 license = "MIT"
 
 [workspace.dependencies]
-gpui = { version = "0.2.2", default-features = false, features = ["font-kit", "runtime_shaders"] }
+# Zed's gpui, pinned. gpui_platform supplies the platform backend and the
+# application entry point; runtime_shaders avoids needing Xcode's Metal Toolchain.
+gpui = { git = "https://github.com/zed-industries/zed", rev = "a7d74150ac7a663fdaa01ec5177e303baaf6c331" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "a7d74150ac7a663fdaa01ec5177e303baaf6c331", features = ["font-kit", "runtime_shaders"] }
 gpui-metro = { path = "crates/gpui-metro" }
 anyhow = "1"
 

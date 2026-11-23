@@ -12,11 +12,11 @@ mod pages;
 mod store;
 
 use gpui::{
-    Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
+    Bounds, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
 };
 
 fn main() {
-    Application::new()
+    gpui_platform::application()
         .with_assets(gpui_metro::Assets::new())
         .run(|cx| {
             gpui_metro::init(cx);

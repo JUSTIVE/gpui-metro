@@ -7,5 +7,6 @@ publish = false
 
 [dependencies]
 gpui.workspace = true
+gpui_platform.workspace = true
 gpui-metro.workspace = true
 anyhow.workspace = true

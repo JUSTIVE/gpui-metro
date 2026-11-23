@@ -81,7 +81,7 @@ impl NoAtiv {
             }
         });
         let focus = cx.focus_handle();
-        window.focus(&focus);
+        window.focus(&focus, cx);
         let mut app = Self {
             _store_changed: cx.observe(&store, |_, _, cx| cx.notify()),
             store,
@@ -142,7 +142,7 @@ impl NoAtiv {
     /// then the page.
     pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if window.focused(cx).is_some_and(|f| f != self.focus) {
-            window.focus(&self.focus);
+            window.focus(&self.focus, cx);
         } else if self.dialog.take().is_none() {
             self.pop(window, cx);
         }
@@ -186,7 +186,7 @@ impl NoAtiv {
     fn navigated(&mut self, direction: Direction, window: &mut Window, cx: &mut Context<Self>) {
         self.generation += 1;
         self.direction = direction;
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         cx.notify();
     }
 
@@ -447,7 +447,7 @@ pub(crate) mod tests {
             _ => unreachable!(),
         });
         let focus = input.read_with(cx, |i, cx| i.focus_handle(cx));
-        cx.update(|window, _| window.focus(&focus));
+        cx.update(|window, cx| window.focus(&focus, cx));
         cx.simulate_input("foam");
         cx.simulate_keystrokes("backspace");
         assert_eq!(input.read_with(cx, |i, _| i.text().to_string()), "foa");

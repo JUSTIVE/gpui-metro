@@ -457,7 +457,7 @@ impl TextInput {
     // ---- mouse ------------------------------------------------------------------
 
     fn on_mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus(&self.focus_handle);
+        window.focus(&self.focus_handle, cx);
         let at = self.index_for_mouse_position(event.position);
         match event.click_count {
             2 => {
@@ -891,7 +891,7 @@ impl Element for TextElement {
                 window.paint_quad(selection)
             }
             let origin = point(bounds.origin.x - scroll_x, bounds.origin.y);
-            line.paint(origin, window.line_height(), window, cx).ok();
+            line.paint(origin, window.line_height(), gpui::TextAlign::Left, None, window, cx).ok();
             if let Some(cursor) = prepaint.cursor.take() {
                 window.paint_quad(cursor);
             }
@@ -997,7 +997,7 @@ mod tests {
         let host_input = input.clone();
         let (_, vcx) = cx.add_window_view(|_, _| Host(host_input));
         let focus = input.read_with(vcx, |i, _| i.focus_handle.clone());
-        vcx.update(|window, _| window.focus(&focus));
+        vcx.update(|window, cx| window.focus(&focus, cx));
         vcx.run_until_parked();
         (input, vcx)
     }

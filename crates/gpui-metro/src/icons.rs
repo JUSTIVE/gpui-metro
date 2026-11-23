@@ -96,7 +96,7 @@ pub fn icon(icon: Icon, size: impl Into<Pixels>, color: Hsla) -> Svg {
     icon.render(size, color)
 }
 
-/// Serves `metro/icons/*.svg`. Pass to `Application::with_assets`; if the app
+/// Serves `metro/icons/*.svg`. Pass to `Application::with_assets` (`gpui_platform::application()`); if the app
 /// has its own assets, wrap them: `Assets::with_fallback(MyAssets)`.
 pub struct Assets {
     fallback: Option<Box<dyn AssetSource>>,
