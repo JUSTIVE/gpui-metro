@@ -1,27 +1,24 @@
 //! Pivot: a row of huge lower-case headers over one pane of content. The
 //! selected header is always leftmost; the others follow it in order and
-//! wrap around, dimmed. Tap a header or swipe horizontally to move.
+//! wrap around, dimmed. Tap a header, Shift + wheel, or swipe sideways to move.
 
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce, ScrollDelta,
-    ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled, TouchPhase, Window, div,
-    prelude::FluentBuilder, px,
+    AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 
 use crate::{
     Theme, TextStyle,
     chrome::PAGE_MARGIN,
     motion::{Direction, enter, enter_div, generation_id, track},
+    pager::{self, Pager},
     text,
     theme::{LIGHT, size},
 };
 
 pub type SelectHandler = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-
-/// Horizontal travel (px) that turns a trackpad swipe into a pivot move.
-pub(crate) const SWIPE_THRESHOLD: f32 = 60.;
 
 #[derive(IntoElement)]
 pub struct Pivot {
@@ -75,44 +72,6 @@ pub fn is_forward(from: usize, to: usize, len: usize) -> bool {
     ahead != 0 && ahead <= len / 2
 }
 
-/// Turns a stream of trackpad scroll events into discrete page steps: one
-/// step per gesture, once horizontal travel passes [`SWIPE_THRESHOLD`].
-pub(crate) struct Swipe {
-    accum: f32,
-    armed: bool,
-}
-
-impl Swipe {
-    pub(crate) fn new() -> Self {
-        Self { accum: 0., armed: true }
-    }
-
-    /// `Some(1)` = next page (content dragged left), `Some(-1)` = previous.
-    pub(crate) fn feed(&mut self, e: &ScrollWheelEvent) -> Option<i32> {
-        if matches!(e.touch_phase, TouchPhase::Started) {
-            *self = Self::new();
-        }
-        let (dx, dy) = match e.delta {
-            ScrollDelta::Pixels(d) => (f32::from(d.x), f32::from(d.y)),
-            ScrollDelta::Lines(d) => (d.x * 20., d.y * 20.),
-        };
-        let mut step = None;
-        // Mostly-vertical scrolling belongs to the pane, not the pivot.
-        if dx.abs() >= dy.abs() {
-            self.accum += dx;
-            if self.armed && self.accum.abs() > SWIPE_THRESHOLD {
-                self.armed = false;
-                step = Some(if self.accum < 0. { 1 } else { -1 });
-                self.accum = 0.;
-            }
-        }
-        if matches!(e.touch_phase, TouchPhase::Ended) {
-            *self = Self::new();
-        }
-        step
-    }
-}
-
 impl RenderOnce for Pivot {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = Theme::palette(cx);
@@ -123,8 +82,8 @@ impl RenderOnce for Pivot {
         let direction =
             if generation == 0 || is_forward(prev, selected, len) { Direction::Forward } else { Direction::Backward };
 
-        let swipe =
-            window.use_keyed_state(ElementId::from(SharedString::from(format!("{key}-swipe"))), cx, |_, _| Swipe::new());
+        let pager_state =
+            window.use_keyed_state(ElementId::from(SharedString::from(format!("{key}-pager"))), cx, |_, cx| Pager::new(cx));
 
         let headers = rotated(len, selected).into_iter().map(|ix| {
             let is_sel = ix == selected;
@@ -146,20 +105,11 @@ impl RenderOnce for Pivot {
             .id(self.id)
             .flex()
             .flex_col()
+            .relative()
             .size_full()
             .overflow_hidden()
             .font_family(Theme::font(cx))
             .text_color(p.foreground)
-            .on_scroll_wheel(move |e: &ScrollWheelEvent, w, cx| {
-                let Some(f) = on_select.as_ref() else { return };
-                let step = swipe.update(cx, |s, _| s.feed(e));
-                if let Some(step) = step
-                    && len > 1
-                {
-                    let next = if step > 0 { (selected + 1) % len } else { (selected + len - 1) % len };
-                    f(next, w, cx);
-                }
-            })
             .child(
                 div()
                     .flex()
@@ -196,6 +146,15 @@ impl RenderOnce for Pivot {
                         cx,
                     )),
             )
+            .when_some(on_select.filter(|_| len > 1), |el, f| {
+                el.child(pager::surface(
+                    pager_state,
+                    Rc::new(move |step, w, cx| {
+                        let next = if step > 0 { (selected + 1) % len } else { (selected + len - 1) % len };
+                        f(next, w, cx);
+                    }),
+                ))
+            })
     }
 }
 

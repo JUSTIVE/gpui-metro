@@ -8,14 +8,15 @@ use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement,
-    RenderOnce, ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
+    RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 
 use crate::{
     Theme,
     chrome::PAGE_MARGIN,
     motion::{ease_out_expo, generation_id, lerp, track},
-    pivot::{SelectHandler, Swipe},
+    pager::{self, Pager},
+    pivot::SelectHandler,
     theme::{LIGHT, size},
 };
 
@@ -131,10 +132,10 @@ impl RenderOnce for Panorama {
             strip.left(strip_left(to)).into_any_element()
         };
 
-        let swipe = window.use_keyed_state(
-            ElementId::from(SharedString::from(format!("{key}-swipe"))),
+        let pager_state = window.use_keyed_state(
+            ElementId::from(SharedString::from(format!("{key}-pager"))),
             cx,
-            |_, _| Swipe::new(),
+            |_, cx| Pager::new(cx),
         );
         let on_select = self.on_select;
         div()
@@ -146,17 +147,16 @@ impl RenderOnce for Panorama {
             .text_color(p.foreground)
             .child(title)
             .child(strip)
-            .on_scroll_wheel(move |e: &ScrollWheelEvent, w, cx| {
-                let Some(f) = on_select.clone() else { return };
-                let step = swipe.update(cx, |s, _| s.feed(e));
-                let next = match step {
-                    Some(1) => selected + 1,
-                    Some(_) => selected.wrapping_sub(1),
-                    None => return,
-                };
-                if next < len {
-                    f(next, w, cx);
-                }
+            .when_some(on_select, |el, f| {
+                el.child(pager::surface(
+                    pager_state,
+                    Rc::new(move |step, w, cx| {
+                        let next = if step > 0 { selected + 1 } else { selected.wrapping_sub(1) };
+                        if next < len {
+                            f(next, w, cx);
+                        }
+                    }),
+                ))
             })
     }
 }

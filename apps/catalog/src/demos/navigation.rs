@@ -121,7 +121,7 @@ pub fn panorama_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
         .child(big("videos"))
         .child(big("podcasts"))
         .child(big("radio"))
-        .child(div().pt(px(12.)).child(text(TextStyle::Subtle, "swipe or tap the peeking section")));
+        .child(div().pt(px(12.)).child(text(TextStyle::Subtle, "shift + scroll, swipe, or tap the peeking section")));
 
     let colors = [Accent::Orange, Accent::Magenta, Accent::Teal, Accent::Lime, Accent::Violet, Accent::Cobalt];
     let history = div().flex().flex_wrap().gap(px(TILE_GAP)).children(colors.into_iter().enumerate().map(|(ix, a)| {

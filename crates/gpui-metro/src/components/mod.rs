@@ -3,6 +3,7 @@ pub mod button;
 pub mod chrome;
 pub mod dialog;
 pub mod list;
+pub mod pager;
 pub mod panorama;
 pub mod pivot;
 pub mod progress;
