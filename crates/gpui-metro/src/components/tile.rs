@@ -532,6 +532,11 @@ impl Cell {
         (r, k, self.h * k)
     }
 
+    /// How far the tile's middle has receded from the screen at `degrees`.
+    fn depth(self, degrees: f32) -> f32 {
+        (self.x + self.hinge + self.w / 2.) * degrees.to_radians().sin()
+    }
+
     /// `tile` turned by `degrees`, drawn in the same structure whether it is
     /// turning or at rest, so the tile (and its tilt) keeps its state. The
     /// tile is clipped to its projected span (narrower toward the hinge,
@@ -675,13 +680,19 @@ impl RenderOnce for TileGrid {
             }
         };
         let mut moving = false;
+        // Paint order: a tile turned further away sits deeper, so it goes
+        // behind its neighbours. Without this a row-mate swinging toward the
+        // hinge sweeps across the tapped tile (still flat, in front) instead
+        // of passing behind it. Element state is keyed by id, so reordering
+        // children keeps every tile's state.
+        let mut layers: Vec<(f32, AnyElement)> = Vec::with_capacity(self.tiles.len());
 
-        let tiles: Vec<AnyElement> = self
+        self
             .tiles
             .into_iter()
             .zip(origins)
             .enumerate()
-            .map(|(ix, (mut t, (x, y)))| {
+            .for_each(|(ix, (mut t, (x, y)))| {
                 // Route the click through the exit: animate first, launch after.
                 if let (Some(motion), Some(launch)) = (motion.clone(), t.on_click.take()) {
                     let total = totals[ix];
@@ -717,9 +728,12 @@ impl RenderOnce for TileGrid {
                 let (tw, th) = t.size.pixels(unit, gap);
                 let (degrees, visible, running) = pose(ix);
                 moving |= running;
-                Cell { x, y, w: tw, h: th, hinge }.render(t.metrics(unit, gap), degrees, visible)
-            })
-            .collect();
+                let cell = Cell { x, y, w: tw, h: th, hinge };
+                layers.push((cell.depth(degrees), cell.render(t.metrics(unit, gap), degrees, visible)));
+            });
+        // Stable: tiles at the same depth keep their order.
+        layers.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let tiles = layers.into_iter().map(|(_, el)| el);
         if moving {
             window.request_animation_frame();
         }

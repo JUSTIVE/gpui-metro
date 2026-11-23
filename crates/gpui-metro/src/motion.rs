@@ -299,15 +299,21 @@ impl Turnstile {
 pub fn turned(degrees: f32, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
     let metrics = cx.try_global::<Theme>().map_or((PAGE_MARGIN, PAGE_CONTENT_WIDTH), |t| t.page_metrics);
     let (f, offset) = if reduced(cx) { (1., 0.) } else { page_turn(degrees, metrics) };
-    let f_clamped = f.max(0.02);
+    // Within a thousandth of rest, show it at rest: less than half a px.
+    let f_clamped = if f > 0.999 { 1. } else { f.max(0.02) };
+    // The page inside is the clip's width × 1/f, which in floats can land a
+    // hair under the full width, and content that exactly fills a row
+    // (a wrapping grid of swatches) then reflows for a frame. Err wide: a
+    // fraction of a px past the page's right edge is never seen.
+    let inner = if f_clamped >= 1. { 1. } else { (1. + 1e-4) / f_clamped };
     div()
         .relative()
         .size_full()
         .overflow_hidden()
         .w(relative(f_clamped))
-        .ml(u(offset))
+        .ml(u(if f_clamped >= 1. { 0. } else { offset }))
         .opacity(if f < 0.04 { 0. } else { 1. })
-        .child(div().relative().h_full().w(relative(1. / f_clamped)).child(wrapper.size_full()))
+        .child(div().relative().h_full().w(relative(inner)).child(wrapper.size_full()))
         .into_any_element()
 }
 
