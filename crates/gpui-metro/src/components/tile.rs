@@ -18,7 +18,7 @@ use crate::theme::u;
 use crate::{
     Icon, Theme,
     chrome::PAGE_MARGIN,
-    motion::{ease_in_exp6, ease_in_out_cubic, turn},
+    motion::{ENTER, Turn, ease_in_exp6, ease_in_out_cubic, ease_out_exp6, turn},
     scaled::scaled,
     theme::size,
 };
@@ -351,6 +351,7 @@ pub struct TileGrid {
     unit: f32,
     gap: f32,
     turnstile: bool,
+    replay: usize,
     hinge: f32,
 }
 
@@ -364,6 +365,7 @@ pub fn tile_grid() -> TileGrid {
         unit: TILE_UNIT,
         gap: TILE_GAP,
         turnstile: false,
+        replay: 0,
         hinge: PAGE_MARGIN,
     }
 }
@@ -415,12 +417,18 @@ impl TileGrid {
         self.gap = gap;
         self
     }
-    /// Launching from a tile plays the start screen's turnstile-out: the
-    /// tiles swing away in a wave from the top-left, the tapped tile last,
-    /// and only then does the tile's `on_click` run. Taps during the exit
-    /// are ignored. With reduced motion the click runs at once.
+    /// The start screen's turnstile. When the grid appears, its tiles swing
+    /// in one after another; launching from a tile swings them away in a
+    /// wave from the top-left, the tapped tile last, and only then does the
+    /// tile's `on_click` run. Taps during the exit are ignored. With reduced
+    /// motion nothing moves and clicks run at once.
     pub fn turnstile(mut self, on: bool) -> Self {
         self.turnstile = on;
+        self
+    }
+    /// Change this to replay the entrance without remounting the grid.
+    pub fn replay(mut self, key: usize) -> Self {
+        self.replay = key;
         self
     }
 
@@ -469,6 +477,83 @@ pub fn exit_schedule(positions: &[(usize, usize)], tapped: usize) -> (Vec<Durati
         delays[tapped] = tapped_delay;
     }
     (delays, tapped_delay + EXIT_TILE)
+}
+
+/// Where a tile turns in from when the start screen appears.
+const ENTER_FROM_DEG: f32 = 60.;
+/// Gap between neighbouring tiles as they turn in.
+const ENTER_STEP: Duration = Duration::from_millis(20);
+const ENTER_WAVE_MAX: Duration = Duration::from_millis(240);
+
+/// Start delays for the turnstile-in: reading order, top-left first.
+pub fn enter_schedule(positions: &[(usize, usize)]) -> Vec<Duration> {
+    let mut order: Vec<usize> = (0..positions.len()).collect();
+    order.sort_by_key(|&i| (positions[i].1, positions[i].0));
+    let step = match order.len() {
+        0 | 1 => ENTER_STEP,
+        n => ENTER_STEP.min(ENTER_WAVE_MAX / (n as u32 - 1)),
+    };
+    let mut delays = vec![Duration::ZERO; positions.len()];
+    for (rank, &i) in order.iter().enumerate() {
+        delays[i] = step * rank as u32;
+    }
+    delays
+}
+
+/// A tile's place in the grid, for projecting it as it turns.
+#[derive(Clone, Copy)]
+struct Cell {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    /// Distance from the hinge to the grid's left edge.
+    hinge: f32,
+}
+
+impl Cell {
+    /// The tile turned by `degrees` about the hinge, as seen in perspective:
+    /// its span narrows toward the hinge, and it really shrinks (rem
+    /// scaling) by the perspective scale. Returns (span, scale, height).
+    fn project(self, degrees: f32) -> (Turn, f32, f32) {
+        let r = turn(self.x + self.hinge, self.w, degrees);
+        let k = (r.scale_left + r.scale_right) / 2.;
+        (r, k, self.h * k)
+    }
+
+    /// Animates `tile` turning from `degrees.0` to `degrees.1` after `delay`;
+    /// invisible while it waits.
+    fn swing(self, tile: Tile, id: ElementId, delay: Duration, motion: Animation, degrees: (f32, f32)) -> AnyElement {
+        let mut animations = Vec::with_capacity(2);
+        if !delay.is_zero() {
+            animations.push(Animation::new(delay));
+        }
+        let delayed = animations.len() == 1;
+        animations.push(motion);
+        let at = move |phase: usize, t: f32| {
+            let waiting = delayed && phase == 0;
+            let t = if waiting { 0. } else { t };
+            (waiting, self.project(degrees.0 + (degrees.1 - degrees.0) * t))
+        };
+        let body = scaled(1.).absolute().left_0().top_0().child(tile).with_animations(
+            id.clone(),
+            animations.clone(),
+            move |el, phase, t| el.scale(at(phase, t).1.1),
+        );
+        div()
+            .absolute()
+            .overflow_hidden()
+            .child(body)
+            .with_animations(id, animations, move |el, phase, t| {
+                let (waiting, (r, _, h)) = at(phase, t);
+                el.left(u(r.left - self.hinge))
+                    .top(u(self.y + (self.h - h) / 2.))
+                    .w(u(r.width))
+                    .h(u(h))
+                    .opacity(if waiting || r.width < 1. { 0. } else { 1. })
+            })
+            .into_any_element()
+    }
 }
 
 /// The turnstile-out a tile is in, if any.
@@ -525,6 +610,8 @@ impl RenderOnce for TileGrid {
             .collect();
 
         let reduced = Theme::get(cx).reduced_motion;
+        let (turnstile, replay) = (self.turnstile, self.replay);
+        let enter_delays = enter_schedule(&positions);
         let exit = self
             .turnstile
             .then(|| window.use_keyed_state(self.id.clone(), cx, |_, _| Exit { tapped: None, generation: 0 }));
@@ -580,46 +667,27 @@ impl RenderOnce for TileGrid {
 
             let (tw, th) = t.size.pixels(unit, gap);
             let tile = t.metrics(unit, gap);
+            let cell = Cell { x, y, w: tw, h: th, hinge };
             match (&schedule, leaving) {
-                (Some(delays), Some((_, generation))) => {
-                    let delay = delays[ix];
-                    let mut animations = Vec::with_capacity(2);
-                    if !delay.is_zero() {
-                        animations.push(Animation::new(delay));
-                    }
-                    let delayed = animations.len() == 1;
-                    animations.push(Animation::new(EXIT_TILE).with_easing(ease_in_exp6));
-                    // Turnstile-out: every tile turns to 90° about the screen's
-                    // left edge (a page margin left of the grid) and is
-                    // projected: it narrows toward the hinge and recedes. The
-                    // tile really shrinks by the perspective scale (rem
-                    // scaling) and is clipped to its projected width.
-                    let project = move |phase: usize, t: f32| {
-                        let t = if delayed && phase == 0 { 0. } else { t };
-                        let r = turn(x + hinge, tw, 90. * t);
-                        let k = (r.scale_left + r.scale_right) / 2.;
-                        (r, k, th * k)
-                    };
-                    let id = ElementId::from((SharedString::from(format!("tile-exit-{generation}")), ix));
-                    let body = scaled(1.).absolute().left_0().top_0().child(tile).with_animations(
-                        id.clone(),
-                        animations.clone(),
-                        move |el, phase, t| el.scale(project(phase, t).1),
-                    );
-                    div()
-                        .absolute()
-                        .overflow_hidden()
-                        .child(body)
-                        .with_animations(id, animations, move |el, phase, t| {
-                            let (r, _, h) = project(phase, t);
-                            el.left(u(r.left - hinge))
-                                .top(u(y + (th - h) / 2.))
-                                .w(u(r.width))
-                                .h(u(h))
-                                .opacity(if r.width < 1. { 0. } else { 1. })
-                        })
-                        .into_any_element()
-                }
+                // Turnstile-out: every tile turns to 90° about the screen's
+                // left edge, ease-in, in the wave the schedule sets.
+                (Some(delays), Some((_, generation))) => cell.swing(
+                    tile,
+                    ElementId::from((SharedString::from(format!("tile-exit-{generation}")), ix)),
+                    delays[ix],
+                    Animation::new(EXIT_TILE).with_easing(ease_in_exp6),
+                    (0., 90.),
+                ),
+                // Turnstile-in: each tile swings open from 60°, feathered in
+                // reading order. Plays whenever the grid appears (or `replay`
+                // changes).
+                _ if turnstile && !reduced => cell.swing(
+                    tile,
+                    ElementId::from((SharedString::from(format!("tile-enter-{replay}")), ix)),
+                    enter_delays[ix],
+                    Animation::new(ENTER).with_easing(ease_out_exp6),
+                    (ENTER_FROM_DEG, 0.),
+                ),
                 _ => div().absolute().left(u(x)).top(u(y)).child(tile).into_any_element(),
             }
         });
@@ -708,6 +776,17 @@ mod tests {
         assert_eq!(g.groups.len(), 2, "the first group takes the implicit slot");
         assert_eq!(g.width(), 2. * g.group_width() + GROUP_GAP);
         assert_eq!(tile_grid().tile(tile("x", Small)).width(), tile_grid().group_width());
+    }
+
+    #[test]
+    fn tiles_turn_in_top_left_first() {
+        let sizes = [Wide, Medium, Small, Small];
+        let positions = pack(&sizes, 4);
+        let d = enter_schedule(&positions);
+        // wide (row 0), medium (row 2, col 0), then the two smalls beside it.
+        assert_eq!(d[0], Duration::ZERO);
+        assert!(d.windows(2).all(|w| w[0] < w[1]), "{d:?}");
+        assert!(enter_schedule(&vec![(0, 0); 80]).iter().all(|&x| x <= ENTER_WAVE_MAX));
     }
 
     #[test]

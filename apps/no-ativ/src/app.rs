@@ -307,13 +307,13 @@ impl Render for NoAtiv {
         let nav = Nav::new(cx.entity().downgrade(), page_width, self.start_scroll.clone());
         let PageView { body, app_bar } = pages::render(self.top(), self.store.read(cx), &nav, cx);
         let page_key = SharedString::from(format!("page-{}", self.generation));
-        let body = motion::enter_div(
-            page_key,
-            self.direction,
-            0,
-            div().size_full().child(body),
-            cx,
-        );
+        // The start screen turns its tiles in one by one itself; every other
+        // page turns as a whole.
+        let body = if matches!(self.top(), Page::Start) {
+            div().size_full().child(body).into_any_element()
+        } else {
+            motion::enter_div(page_key, self.direction, 0, div().size_full().child(body), cx)
+        };
 
         let back = (self.stack.len() > 1).then(|| {
             div().absolute().left(u(40.)).top(u(44.)).child(

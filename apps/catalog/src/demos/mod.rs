@@ -45,6 +45,9 @@ pub struct DemoState {
     pub launched: Option<Launched>,
     /// Bumps on every launch and return, so entrances replay.
     pub launches: usize,
+    /// Turnstile demo: entrance replays, and how slowly to play it.
+    pub turnstile_replays: usize,
+    pub turnstile_exits: usize,
     // navigation
     pub pivot: usize,
     pub panorama: usize,
@@ -93,6 +96,8 @@ impl DemoState {
             more_tiles: false,
             launched: None,
             launches: 0,
+            turnstile_replays: 0,
+            turnstile_exits: 0,
             pivot: 0,
             panorama: 0,
             app_bar_minimized: false,
@@ -137,6 +142,7 @@ pub fn render(page: Page, s: &DemoState, window: &mut Window, cx: &mut Context<C
         Page::Icons => Demo::new(foundations::icons(cx)),
         Page::Tile => Demo::new(tiles::tile_page(s, cx)),
         Page::TileGrid => Demo::new(tiles::grid_page(s, cx)),
+        Page::Turnstile => Demo::new(tiles::turnstile_page(s, cx)),
         Page::Pivot => Demo::new(navigation::pivot_page(s, cx)),
         Page::Panorama => Demo::new(navigation::panorama_page(s, cx)),
         Page::AppBar => Demo::new(navigation::app_bar_page(s, cx)),

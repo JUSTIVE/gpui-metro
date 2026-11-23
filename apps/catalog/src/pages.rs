@@ -46,6 +46,7 @@ pub enum Page {
     Icons,
     Tile,
     TileGrid,
+    Turnstile,
     Pivot,
     Panorama,
     AppBar,
@@ -71,12 +72,13 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 27] = [
+    pub const ALL: [Page; 28] = [
         Page::Palette,
         Page::Typography,
         Page::Icons,
         Page::Tile,
         Page::TileGrid,
+        Page::Turnstile,
         Page::Pivot,
         Page::Panorama,
         Page::AppBar,
@@ -112,7 +114,7 @@ impl Page {
     pub fn group(self) -> Group {
         match self {
             Page::Palette | Page::Typography | Page::Icons => Group::Foundations,
-            Page::Tile | Page::TileGrid => Group::Tiles,
+            Page::Tile | Page::TileGrid | Page::Turnstile => Group::Tiles,
             Page::Pivot | Page::Panorama | Page::AppBar => Group::Navigation,
             Page::Button
             | Page::RoundButton
@@ -138,6 +140,7 @@ impl Page {
             Page::Icons => "icons",
             Page::Tile => "tile",
             Page::TileGrid => "tile grid",
+            Page::Turnstile => "turnstile",
             Page::Pivot => "pivot",
             Page::Panorama => "panorama",
             Page::AppBar => "app bar",
@@ -176,6 +179,9 @@ impl Page {
             }
             Page::Tile => {
                 "The start-screen tile: a flat accent square with its name in the corner and an optional count. Four footprints (small, medium, wide, large) plus custom front faces and live back faces that periodically slide up, the WP hub-tile peek. Tap the mail tile to bump its count."
+            }
+            Page::Turnstile => {
+                "The start screen's turnstile, on its own. When the grid appears its tiles swing open about the screen's left edge, top-left first; tap a tile and they swing away in a wave, the tapped one last, then (here) straight back in. Each tile is projected through a perspective camera: it narrows toward the hinge and really shrinks as it turns (rem scaling). Replay the entrance on its own, or switch motion off to compare."
             }
             Page::TileGrid => {
                 "TileGrid packs tiles the way the start screen did: 2×2 blocks, medium and larger tiles aligned to block corners, small tiles filling quadrants first-fit. Flip the switch for the six-column \"show more tiles\" layout; the same tiles re-pack at a smaller unit. With turnstile on, tapping people or outlook swings the tiles out (the tapped one last) and then opens a panorama or a pivot."
@@ -293,6 +299,14 @@ tile("people", TileSize::Wide)
     .back(|_size, _bg| div().child("ben"))
     .period(11.)
     .phase(0.5)"#
+            }
+            Page::Turnstile => {
+                r#"tile_grid()
+    .turnstile(true)   // swing in on appear, out on launch
+    .replay(replays)   // bump to replay the entrance
+    .tile(tile("mail", TileSize::Medium)
+        // runs after the exit wave has finished
+        .on_click(|_, _, cx| launch_mail(cx)))"#
             }
             Page::TileGrid => {
                 r#"tile_grid()

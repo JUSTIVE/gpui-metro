@@ -195,12 +195,59 @@ pub fn grid_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
             )
             .into_any_element();
     }
-    let start = start_screen(s, cx);
-    if s.launches == 0 {
-        return start;
-    }
-    // Coming back from an app: the start screen swings back in from the left.
-    enter_div(key("return"), Direction::Backward, 0, div().size_full().child(start), cx)
+    // Coming back from an app, the grid's own turnstile swings the tiles in.
+    start_screen(s, cx)
+}
+
+/// The turnstile on its own: tap any tile to watch it leave and come back.
+pub fn turnstile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
+    let again = |id: &'static str, size: TileSize, icon: Icon, color: Option<Hsla>| {
+        let t = tile(id, size).icon(icon).on_click(tap(cx, |s| {
+            s.turnstile_exits += 1;
+            s.turnstile_replays += 1;
+        }));
+        match color {
+            Some(c) => t.color(c),
+            None => t,
+        }
+    };
+    let tiles = vec![
+        again("ts-mail", TileSize::Medium, Icon::Mail, None).title("mail"),
+        again("ts-phone", TileSize::Small, Icon::Phone, Some(Accent::Teal.color())),
+        again("ts-camera", TileSize::Small, Icon::Camera, Some(Accent::Magenta.color())),
+        again("ts-clock", TileSize::Small, Icon::Clock, None),
+        again("ts-search", TileSize::Small, Icon::Search, Some(Accent::Orange.color())),
+        again("ts-people", TileSize::Wide, Icon::People, Some(Accent::Cobalt.color())).title("people"),
+        again("ts-music", TileSize::Medium, Icon::Play, Some(Accent::Crimson.color())).title("music"),
+        again("ts-calendar", TileSize::Medium, Icon::Calendar, None).title("calendar"),
+    ];
+    page(
+        "turnstile",
+        stack()
+            .child(caption("tap a tile: the tiles swing out, then back in"))
+            .child(
+                div()
+                    .flex()
+                    .gap(u(12.))
+                    .child(
+                        gpui_metro::button("ts-replay", "replay entrance")
+                            .on_click(tap(cx, |s| s.turnstile_replays += 1)),
+                    )
+                    .child(
+                        toggle_switch("ts-still", gpui_metro::Theme::get(cx).reduced_motion)
+                            .labels("still", "moving")
+                            .on_change(|v, _, cx| gpui_metro::Theme::set_reduced_motion(v, cx)),
+                    ),
+            )
+            .child(
+                tile_grid()
+                    .id("turnstile-demo")
+                    .turnstile(true)
+                    .replay(s.turnstile_replays)
+                    .tiles(tiles),
+            )
+            .child(caption(format!("{} launches", s.turnstile_exits))),
+    )
 }
 
 fn start_screen(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
