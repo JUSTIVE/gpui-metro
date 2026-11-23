@@ -741,7 +741,11 @@ impl RenderOnce for TileGrid {
             .enumerate()
             .for_each(|(ix, (mut t, (x, y)))| {
                 // Route the click through the exit: animate first, launch after.
-                if let (Some(motion), Some(launch)) = (motion.clone(), t.on_click.take()) {
+                // Only a turnstile grid reroutes the click. Taking `on_click`
+                // inside a tuple pattern would drop it on every other grid.
+                if let Some(motion) = motion.clone()
+                    && let Some(launch) = t.on_click.take()
+                {
                     let positions = positions.clone();
                     t.on_click = Some(Rc::new(move |e: &ClickEvent, window: &mut Window, cx: &mut App| {
                         let started = motion.update(cx, |m, cx| {
