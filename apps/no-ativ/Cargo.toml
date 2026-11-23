@@ -1,0 +1,11 @@
+[package]
+name = "no-ativ"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+gpui.workspace = true
+gpui-metro.workspace = true
+anyhow.workspace = true
