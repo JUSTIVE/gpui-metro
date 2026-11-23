@@ -45,23 +45,18 @@ fn booking(block: &DeckBlock, store: &Store, nav: &Nav, cx: &App) -> impl IntoEl
 }
 
 pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
-    let pane = if selected == 0 {
-        scroll("deck-today").children(
-            store
-                .deck_today()
-                
-                .map(|b| booking(b, store, nav, cx)),
-        )
-    } else {
-        scroll("deck-instruments").children(store.data.instruments.iter().map(
-            |i| {
+    let pane = |selected: usize| {
+        if selected == 0 {
+            scroll("deck-today").children(store.deck_today().map(|b| booking(b, store, nav, cx)))
+        } else {
+            scroll("deck-instruments").children(store.data.instruments.iter().map(|i| {
                 let tone = match i.state {
                     InstrumentState::Down => alarm(),
                     InstrumentState::Cip => warn(),
                     InstrumentState::Running => Theme::palette(cx).accent,
                     InstrumentState::Ready => Accent::Emerald.color(),
                 };
-                
+
                 list_item(
                     SharedString::from(format!("instrument-{}", i.id)),
                     i.code.clone(),
@@ -70,13 +65,13 @@ pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
                 .leading_color(tone)
                 .subtitle(format!("{} for {} h", i.state.as_str(), i.since_hours))
                 .detail(format!("{} · {} cycles", i.kind, i.cycles))
-            },
-        ))
+            }))
+        }
     };
     PageView::new(
         pivot("deck-pivot", ["today", "instruments"], selected)
             .title(APP)
             .on_select(nav.select())
-            .child(pane),
+            .all_panes((0..2).map(pane)),
     )
 }

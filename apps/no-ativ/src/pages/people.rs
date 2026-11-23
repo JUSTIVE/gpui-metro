@@ -40,7 +40,7 @@ fn member_item(member: &Member) -> impl IntoElement {
 }
 
 pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
-    let pane = match selected {
+    let pane = |selected: usize| match selected {
         0 | 1 => {
             let alumni = selected == 1;
             scroll(format!("people-{selected}")).children(
@@ -49,7 +49,6 @@ pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
                     .members
                     .iter()
                     .filter(|m| m.left.is_some() == alumni)
-                    
                     .map(member_item),
             )
         }
@@ -61,20 +60,20 @@ pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
                 .filter(|m| m.role == role.id && m.left.is_none())
                 .count();
             div()
-                    .flex()
-                    .flex_col()
-                    .py(u(8.))
-                    .child(text(
-                        TextStyle::Large,
-                        format!("{} · {count}", role.name.to_lowercase()),
-                    ))
-                    .child(subtle(role.description, cx))
+                .flex()
+                .flex_col()
+                .py(u(8.))
+                .child(text(
+                    TextStyle::Large,
+                    format!("{} · {count}", role.name.to_lowercase()),
+                ))
+                .child(subtle(role.description, cx))
         })),
     };
     PageView::new(
         pivot("people-pivot", ["roster", "alumni", "roles"], selected)
             .title(APP)
             .on_select(nav.select())
-            .child(pane),
+            .all_panes((0..3).map(pane)),
     )
 }

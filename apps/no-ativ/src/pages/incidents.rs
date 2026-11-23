@@ -50,27 +50,24 @@ fn incident_item(incident: &Incident, nav: &Nav, cx: &App) -> impl IntoElement {
 }
 
 pub fn list(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
-    let status = STATUSES[selected.min(STATUSES.len() - 1)];
-    let incidents: Vec<&Incident> = store
-        .data
-        .incidents
-        .iter()
-        .filter(|i| i.status == status)
-        .collect();
-    let pane = scroll(format!("incidents-{selected}"))
-        .when(incidents.is_empty(), |el| {
-            el.child(subtle("nothing in this state", cx))
-        })
-        .children(
-            incidents
-                .iter()
-                
-                .map(|i| incident_item(i, nav, cx)),
-        );
+    let pane = |selected: usize| {
+        let status = STATUSES[selected.min(STATUSES.len() - 1)];
+        let incidents: Vec<&Incident> = store
+            .data
+            .incidents
+            .iter()
+            .filter(|i| i.status == status)
+            .collect();
+        scroll(format!("incidents-{selected}"))
+            .when(incidents.is_empty(), |el| {
+                el.child(subtle("nothing in this state", cx))
+            })
+            .children(incidents.iter().map(|i| incident_item(i, nav, cx)))
+    };
     let body = pivot("incidents-pivot", STATUSES.map(|s| s.as_str()), selected)
         .title(APP)
         .on_select(nav.select())
-        .child(pane);
+        .all_panes((0..STATUSES.len()).map(pane));
     PageView::new(body).app_bar(app_bar("incidents-bar").button(
         Icon::Add,
         "add",
@@ -274,52 +271,51 @@ pub fn form(form: &IncidentForm, store: &Store, nav: &Nav) -> PageView {
         .child(text_box(&form.title).header("title"))
         .child(
             list_picker("area", AREAS.map(|a| a.as_str()), form.area)
-                    .header("area")
-                    .on_select(edit(nav, |f, ix| f.area = ix)),
+                .header("area")
+                .on_select(edit(nav, |f, ix| f.area = ix)),
         )
         .child(
             list_picker("severity", SEVERITIES.map(|s| s.as_str()), form.severity)
-                    .header("severity")
-                    .on_select(edit(nav, |f, ix| f.severity = ix)),
+                .header("severity")
+                .on_select(edit(nav, |f, ix| f.severity = ix)),
         )
         .child(
             div()
-                    .flex()
-                    .flex_col()
-                    .gap(u(8.))
-                    .child(
-                        toggle_switch("link-run", form.link_run)
-                            .header("link to a run")
-                            .disabled(runs.is_empty())
-                            .on_change(edit(nav, |f, on| f.link_run = on)),
+                .flex()
+                .flex_col()
+                .gap(u(8.))
+                .child(
+                    toggle_switch("link-run", form.link_run)
+                        .header("link to a run")
+                        .disabled(runs.is_empty())
+                        .on_change(edit(nav, |f, on| f.link_run = on)),
+                )
+                .when(form.link_run && !runs.is_empty(), |el| {
+                    el.child(
+                        list_picker("run", runs, form.run).on_select(edit(nav, |f, ix| f.run = ix)),
                     )
-                    .when(form.link_run && !runs.is_empty(), |el| {
-                        el.child(
-                            list_picker("run", runs, form.run)
-                                .on_select(edit(nav, |f, ix| f.run = ix)),
-                        )
-                    }),
+                }),
         )
         .child(
             div()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        check_box("quarantine", form.quarantine)
-                            .label("quarantine the area")
-                            .on_change(edit(nav, |f, on| f.quarantine = on)),
-                    )
-                    .child(
-                        check_box("page-lead", form.page_lead)
-                            .label("page the floor lead")
-                            .on_change(edit(nav, |f, on| f.page_lead = on)),
-                    ),
+                .flex()
+                .flex_col()
+                .child(
+                    check_box("quarantine", form.quarantine)
+                        .label("quarantine the area")
+                        .on_change(edit(nav, |f, on| f.quarantine = on)),
+                )
+                .child(
+                    check_box("page-lead", form.page_lead)
+                        .label("page the floor lead")
+                        .on_change(edit(nav, |f, on| f.page_lead = on)),
+                ),
         )
         .child(
             button("save", "save")
-                    .accent()
-                    .full_width()
-                    .on_click(nav.click(save)),
+                .accent()
+                .full_width()
+                .on_click(nav.click(save)),
         );
 
     PageView::new(titled("incidents", "new incident", fields)).app_bar(

@@ -64,33 +64,31 @@ fn lot_row(lot: &ReagentLot, state: LotState, cx: &App) -> impl IntoElement {
 }
 
 pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
-    let mut lots: Vec<(&ReagentLot, LotState)> = store
-        .data
-        .lots
-        .iter()
-        .map(|l| (l, store.lot_state(l)))
-        .collect();
-    if selected == 0 {
-        lots.retain(|(_, s)| *s != LotState::Ok);
-        lots.sort_by_key(|(l, _)| l.shelf_days);
-    }
-    let pane = scroll(format!("reagents-{selected}"))
-        .child(subtle(
-            format!(
-                "warning {} days before expiry · change it in settings",
-                store.expiry_window
-            ),
-            cx,
-        ))
-        .children(
-            lots.into_iter()
-                
-                .map(|(lot, state)| lot_row(lot, state, cx)),
-        );
+    let pane = |selected: usize| {
+        let mut lots: Vec<(&ReagentLot, LotState)> = store
+            .data
+            .lots
+            .iter()
+            .map(|l| (l, store.lot_state(l)))
+            .collect();
+        if selected == 0 {
+            lots.retain(|(_, s)| *s != LotState::Ok);
+            lots.sort_by_key(|(l, _)| l.shelf_days);
+        }
+        scroll(format!("reagents-{selected}"))
+            .child(subtle(
+                format!(
+                    "warning {} days before expiry · change it in settings",
+                    store.expiry_window
+                ),
+                cx,
+            ))
+            .children(lots.into_iter().map(|(lot, state)| lot_row(lot, state, cx)))
+    };
     PageView::new(
         pivot("reagents-pivot", ["attention", "all lots"], selected)
             .title(APP)
             .on_select(nav.select())
-            .child(pane),
+            .all_panes((0..2).map(pane)),
     )
 }

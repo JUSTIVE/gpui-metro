@@ -64,25 +64,23 @@ pub fn run_item(
 }
 
 pub fn list(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
-    let runs: Vec<&Run> = store
-        .data
-        .runs
-        .iter()
-        .filter(|r| matches(selected, r.phase))
-        .collect();
-    let pane = scroll(format!("runs-{selected}"))
-        .when(runs.is_empty(), |el| {
-            el.child(subtle("nothing here right now", cx))
-        })
-        .children(
-            runs.iter()
-                
-                .map(|r| run_item("run", r, store, nav, cx)),
-        );
+    let pane = |selected: usize| {
+        let runs: Vec<&Run> = store
+            .data
+            .runs
+            .iter()
+            .filter(|r| matches(selected, r.phase))
+            .collect();
+        scroll(format!("runs-{selected}"))
+            .when(runs.is_empty(), |el| {
+                el.child(subtle("nothing here right now", cx))
+            })
+            .children(runs.iter().map(|r| run_item("run", r, store, nav, cx)))
+    };
     let body = pivot("runs-pivot", FILTERS, selected)
         .title(APP)
         .on_select(nav.select())
-        .child(pane);
+        .all_panes((0..FILTERS.len()).map(pane));
     PageView::new(body).app_bar(
         app_bar("runs-bar")
             .button(

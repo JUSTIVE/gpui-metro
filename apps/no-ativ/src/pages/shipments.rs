@@ -73,24 +73,22 @@ fn shipment_row(s: &Shipment, cx: &App) -> impl IntoElement {
 }
 
 pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
-    let delivered = selected == 1;
-    let mut shipments: Vec<&Shipment> = store
-        .data
-        .shipments
-        .iter()
-        .filter(|s| (s.stage == ShipmentStage::Delivered) == delivered)
-        .collect();
-    shipments.sort_by_key(|s| if delivered { -s.eta_days } else { s.eta_days });
-    let pane = scroll(format!("shipments-{selected}")).children(
-        shipments
-            .into_iter()
-            
-            .map(|s| shipment_row(s, cx)),
-    );
+    let pane = |selected: usize| {
+        let delivered = selected == 1;
+        let mut shipments: Vec<&Shipment> = store
+            .data
+            .shipments
+            .iter()
+            .filter(|s| (s.stage == ShipmentStage::Delivered) == delivered)
+            .collect();
+        shipments.sort_by_key(|s| if delivered { -s.eta_days } else { s.eta_days });
+        scroll(format!("shipments-{selected}"))
+            .children(shipments.into_iter().map(|s| shipment_row(s, cx)))
+    };
     PageView::new(
         pivot("shipments-pivot", ["en route", "delivered"], selected)
             .title(APP)
             .on_select(nav.select())
-            .child(pane),
+            .all_panes((0..2).map(pane)),
     )
 }
