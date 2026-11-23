@@ -80,7 +80,8 @@ pub fn toast_page(s: &DemoState, cx: &mut Context<Catalog>) -> Demo {
     );
     let overlay = s.toast.as_ref().map(|t| {
         let n = t.generation;
-        toast(("toast", n), "Kristin")
+        // One kind of toast: a newer one updates it in place.
+        toast("toast-kristin", "Kristin")
             .icon(Icon::Mail)
             .message(format!("are we still on for tonight? ({n})"))
             .on_click(tap(cx, move |s| {

@@ -187,6 +187,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
                 });
                 if let Some((Some(code), status)) = moved {
                     app.toast(
+                        "incident-moved",
                         Icon::Next,
                         code,
                         format!("moved to {}", status.as_str()),
@@ -241,7 +242,7 @@ fn save(app: &mut NoAtiv, window: &mut Window, cx: &mut Context<NoAtiv>) {
                     *pivot = 0;
                 }
             });
-            app.toast(Icon::Alert, code, "filed · open", cx);
+            app.toast("incident-filed", Icon::Alert, code, "filed · open", cx);
         }
         Err(e) => {
             let title = if e == StoreError::EmptyTitle {

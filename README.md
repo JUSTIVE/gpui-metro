@@ -77,6 +77,13 @@ factor as they turn away. Timings follow the WP Toolkit: forward-in from
 (exponent 6), with items feathered 40 ms apart. Tiles turnstile out to 90° on
 an ease-in, in reading order, with the tapped tile last.
 
+Only Metro's original motions are provided. Turnstile (pages) and
+turnstile feather (lists) cover entrances, `motion::exit_div` covers a page
+leaving, and `TileGrid::turnstile` swings tiles in on appear and out on launch
+or `leave`. Swivel is for message boxes and toasts: the band opens from its
+centre line. The tilt effect makes tiles and round buttons sink under the
+pointer. The progress ring follows the Windows 8 ring's keyframes.
+
 Pivot headers glide from where the old selection sat, and the pane slides in
 from the side you moved to. Panorama content follows the input (Shift +
 wheel, or a trackpad swipe), pages once you pass a third of a section, and

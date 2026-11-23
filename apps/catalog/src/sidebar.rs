@@ -56,10 +56,7 @@ pub fn render(
                     .text_color(if on { p.accent } else { p.foreground })
                     .cursor_pointer()
                     .hover(move |s| s.text_color(if on { p.accent } else { p.subtle }))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.page = page;
-                        cx.notify();
-                    }))
+                    .on_click(cx.listener(move |this, _, _, cx| this.go(page, cx)))
                     .child(page.name())
             }))
     });

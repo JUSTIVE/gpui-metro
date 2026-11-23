@@ -10,7 +10,7 @@ use gpui::{
 
 use crate::theme::u;
 
-use crate::{Icon, Theme, theme::size};
+use crate::{Icon, Theme, motion, theme::size};
 
 pub type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
@@ -133,17 +133,15 @@ impl RoundButton {
 }
 
 impl RenderOnce for RoundButton {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = Theme::palette(cx);
         let d = self.diameter;
         let color = if self.disabled { p.disabled } else { p.foreground };
         let (bg, glyph) = if self.filled { (Some(color), p.background) } else { (None, color) };
         let disabled = self.disabled;
         let accent = p.accent;
-        div()
-            .id(self.id)
+        let ring = div()
             .flex()
-            .flex_none()
             .items_center()
             .justify_center()
             .size(u(d))
@@ -151,9 +149,22 @@ impl RenderOnce for RoundButton {
             .border_2()
             .border_color(color)
             .when_some(bg, |el, bg| el.bg(bg))
-            .when(!disabled, |el| el.cursor_pointer().active(move |s| s.bg(accent).border_color(accent)))
-            .child(self.icon.render(u(d * 0.5), glyph))
-            .when_some(self.on_click.filter(|_| !disabled), |el, f| el.on_click(move |e, w, cx| f(e, w, cx)))
+            .child(self.icon.render(u(d * 0.5), glyph));
+        if disabled {
+            return div().id(self.id).flex_none().child(ring).into_any_element();
+        }
+        // The ring fills with the accent while held, and tilts.
+        let group = SharedString::from(format!("{}-ring", self.id));
+        let ring = ring
+            .id(ElementId::from(group.clone()))
+            .group_active(group.clone(), move |s| s.bg(accent).border_color(accent));
+        motion::tilt(self.id, ring, window, cx)
+            .group(group)
+            .flex_none()
+            .size(u(d))
+            .cursor_pointer()
+            .when_some(self.on_click, |el, f| el.on_click(move |e, w, cx| f(e, w, cx)))
+            .into_any_element()
     }
 }
 

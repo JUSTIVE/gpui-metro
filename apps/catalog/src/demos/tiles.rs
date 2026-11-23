@@ -233,16 +233,13 @@ pub fn turnstile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                         gpui_metro::button("ts-replay", "replay entrance")
                             .on_click(tap(cx, |s| s.turnstile_replays += 1)),
                     )
-                    .child(
-                        toggle_switch("ts-still", gpui_metro::Theme::get(cx).reduced_motion)
-                            .labels("still", "moving")
-                            .on_change(|v, _, cx| gpui_metro::Theme::set_reduced_motion(v, cx)),
-                    ),
+                    ,
             )
             .child(
                 tile_grid()
                     .id("turnstile-demo")
                     .turnstile(true)
+                    .leave(s.leaving)
                     .replay(s.turnstile_replays)
                     .tiles(tiles),
             )
@@ -274,6 +271,7 @@ fn start_screen(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
         .child(
             tile_grid()
                 .turnstile(true)
+                .leave(s.leaving)
                 .columns(columns)
                 .metrics(unit, gap)
                 .tiles(start_tiles(s.mail_count, cx)),

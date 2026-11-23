@@ -181,7 +181,7 @@ impl Page {
                 "The start-screen tile: a flat accent square with its name in the corner and an optional count. Four footprints (small, medium, wide, large) plus custom front faces and live back faces that periodically slide up, the WP hub-tile peek. Tap the mail tile to bump its count."
             }
             Page::Turnstile => {
-                "The start screen's turnstile, on its own. When the grid appears its tiles swing open about the screen's left edge, top-left first; tap a tile and they swing away in a wave, the tapped one last, then (here) straight back in. Each tile is projected through a perspective camera: it narrows toward the hinge and really shrinks as it turns (rem scaling). Replay the entrance on its own, or switch motion off to compare."
+                "The start screen's turnstile, on its own. When the grid appears its tiles swing open about the screen's left edge, top-left first; tap a tile and they swing away in a wave, the tapped one last, then (here) straight back in. Each tile is projected through a perspective camera: it narrows toward the hinge and really shrinks as it turns (rem scaling). Replay the entrance on its own."
             }
             Page::TileGrid => {
                 "TileGrid packs tiles the way the start screen did: 2×2 blocks, medium and larger tiles aligned to block corners, small tiles filling quadrants first-fit. Flip the switch for the six-column \"show more tiles\" layout; the same tiles re-pack at a smaller unit. With turnstile on, tapping people or outlook swings the tiles out (the tapped one last) and then opens a panorama or a pivot."
@@ -250,7 +250,7 @@ impl Page {
                 "The two-line page header: the application name in small upper-case semibold over a huge lower-case page title, inset by the standard 24 px page margin."
             }
             Page::Motion => {
-                "Metro motion rendered as 2D silhouettes: a short horizontal travel on a hard exponential ease-out, staggered per element (the feather) and faded up. Choose a direction and replay; reduced motion turns it off everywhere."
+                "Metro's own motions, after the Windows Phone Toolkit, each replaying on its own: turnstile for pages, turnstile feather for lists, swivel for pop-ups, slide for pivot panes, and the tilt effect under the pointer. GPUI can't rotate in 3D, so turns are projected through a perspective camera: content narrows toward the hinge and really shrinks (rem scaling)."
             }
         }
     }

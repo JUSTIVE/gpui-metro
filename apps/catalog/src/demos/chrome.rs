@@ -1,14 +1,14 @@
 //! System tray, page header, and the turnstile entrance.
 
-use gpui::{AnyElement, App, Context, IntoElement, ParentElement, Styled, div};
+use gpui::{AnyElement, App, Context, IntoElement, ParentElement, SharedString, Styled, Window, div};
 use gpui_metro::u;
 use gpui_metro::{
-    Icon, Leading, TextStyle, Theme, button, list_item,
+    Icon, Leading, TextStyle, Theme, list_item,
     motion::{self, Direction},
-    page_header, radio_button, slider, system_tray, text, toggle_switch,
+    page_header, round_button, slider, system_tray, text, tile, toggle_switch,
 };
 
-use super::{DemoState, caption, on, page, stack, tap};
+use super::{DemoState, caption, on, page, stack};
 use crate::app::Catalog;
 
 /// A component shown inside an outlined box, as a specimen.
@@ -50,52 +50,95 @@ pub fn header_page() -> AnyElement {
         .into_any_element()
 }
 
-const DIRECTIONS: [(Direction, &str); 3] =
-    [(Direction::Forward, "forward"), (Direction::Backward, "backward"), (Direction::Down, "down")];
-
-const ROWS: [(&str, &str, Icon); 6] = [
+const ROWS: [(&str, &str, Icon); 4] = [
     ("mail", "4 unread", Icon::Mail),
     ("calendar", "dentist at 3:30", Icon::Calendar),
     ("people", "kristin posted a photo", Icon::People),
     ("music", "get lucky", Icon::Play),
-    ("weather", "snow, −2°", Icon::Snow),
-    ("settings", "wi-fi on", Icon::Settings),
 ];
 
-pub fn motion_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
-    let reduced = Theme::get(cx).reduced_motion;
-    let direction = s.motion_direction;
-    let radios = DIRECTIONS.into_iter().enumerate().map(|(ix, (d, label))| {
-        let select = on(cx, move |s, ()| {
-            s.motion_direction = d;
-            s.motion_replays += 1;
-        });
-        radio_button(("motion-dir", ix), d == direction).label(label).on_select(move |w, cx| select((), w, cx))
-    });
-    // Each row's id carries the replay count, so a replay restarts them all;
-    // the index staggers them by `motion::FEATHER`.
-    let rows = ROWS.into_iter().enumerate().map(|(ix, (title, subtitle, icon))| {
-        motion::enter(
-            motion::generation_id(&format!("motion-row-{ix}"), s.motion_replays),
-            direction,
-            ix,
-            list_item(("motion-item", ix), title).subtitle(subtitle).leading(Leading::Icon(icon)),
-            cx,
+/// One original Metro motion: its name, what it is for, and the specimen,
+/// replaying by itself every few seconds.
+fn motion_row(name: &str, use_: &str, specimen: impl IntoElement, cx: &App) -> impl IntoElement {
+    let p = Theme::palette(cx);
+    div()
+        .flex()
+        .flex_col()
+        .gap(u(8.))
+        .child(text(TextStyle::GroupHeader, name.to_string()))
+        .child(caption(use_.to_string()))
+        .child(
+            div()
+                .relative()
+                .h(u(150.))
+                .overflow_hidden()
+                .border_1()
+                .border_color(p.disabled.opacity(0.5))
+                .child(specimen),
         )
-    });
+}
+
+fn rows(prefix: &str, loop_: usize, feather: bool, cx: &App) -> gpui::Div {
+    div().flex().flex_col().px(u(12.)).children(ROWS.into_iter().take(2).enumerate().map(|(ix, (title, sub, icon))| {
+        let item = list_item((SharedString::from(format!("{prefix}-row")), ix), title)
+            .subtitle(sub)
+            .leading(Leading::Icon(icon));
+        if feather {
+            motion::enter(motion::generation_id(&format!("{prefix}-{ix}"), loop_), Direction::Forward, ix, item, cx)
+        } else {
+            item.into_any_element()
+        }
+    }))
+}
+
+/// Metro's own motions, and nothing else: each plays on its own, on a loop.
+pub fn motion_page(s: &DemoState, window: &mut Window, cx: &mut Context<Catalog>) -> AnyElement {
+    let n = s.motion_loop;
+    let key = |name: &str| motion::generation_id(name, n);
+
+    let turnstile = motion::enter_div(
+        key("m-turnstile"),
+        Direction::Forward,
+        0,
+        div().size_full().child(text(TextStyle::Title2, "inbox").lowercase()).child(rows("m-ts", n, false, cx)),
+        cx,
+    );
+    let feather = div()
+        .size_full()
+        .child(motion::enter(key("m-feather-h"), Direction::Forward, 0, text(TextStyle::Title2, "inbox").lowercase(), cx))
+        .child(rows("m-feather", n, true, cx));
+    let p = Theme::palette(cx);
+    let swivel = motion::swivel_in(
+        key("m-swivel"),
+        div()
+            .w_full()
+            .bg(p.chrome)
+            .p(u(14.))
+            .child(text(TextStyle::Large, "delete this message?"))
+            .child(text(TextStyle::Normal, "it will be gone for good.")),
+        window,
+        cx,
+    );
+    let slide = motion::slide_in(
+        key("m-slide"),
+        Direction::Forward,
+        div().size_full().px(u(12.)).child(rows("m-slide", n, false, cx)),
+        cx,
+    );
+    let tilt = div()
+        .flex()
+        .gap(u(12.))
+        .p(u(12.))
+        .child(tile("m-tilt-tile", gpui_metro::TileSize::Medium).icon(Icon::Mail).title("mail").on_click(|_, _, _| {}))
+        .child(round_button("m-tilt-btn", Icon::Add).on_click(|_, _, _| {}));
+
     page(
         "motion",
         stack()
-            .child(div().flex().children(radios).gap(u(12.)))
-            .child(div().flex().child(
-                button("motion-replay", "replay").icon(Icon::Refresh).on_click(tap(cx, |s| s.motion_replays += 1)),
-            ))
-            .child(caption(if reduced {
-                "reduced motion is on: rows appear without moving"
-            } else {
-                "turnstile feather: 350 ms ease-out, 45 ms per row"
-            }))
-            .child(div().flex().flex_col().children(rows))
-            .child(text(TextStyle::Subtle, format!("played {} times", s.motion_replays + 1))),
+            .child(motion_row("turnstile", "pages, on navigation: the page swings in about the left edge", turnstile, cx))
+            .child(motion_row("turnstile feather", "list pages: the header, then each item, swing in", feather, cx))
+            .child(motion_row("swivel", "message boxes and toasts swing in about their middle", swivel, cx))
+            .child(motion_row("slide", "pivot items: the pane slides in from the side", slide, cx))
+            .child(motion_row("tilt", "press and hold: the element sinks under the pointer", tilt, cx)),
     )
 }

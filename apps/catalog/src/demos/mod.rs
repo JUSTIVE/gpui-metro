@@ -16,7 +16,7 @@ use gpui::{
     ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div,
 };
 use gpui_metro::u;
-use gpui_metro::{PAGE_MARGIN, TextInput, TextStyle, motion::Direction, page_header, text};
+use gpui_metro::{PAGE_MARGIN, TextInput, TextStyle, page_header, text};
 
 use crate::{app::Catalog, pages::Page};
 
@@ -45,6 +45,8 @@ pub struct DemoState {
     pub launched: Option<Launched>,
     /// Bumps on every launch and return, so entrances replay.
     pub launches: usize,
+    /// The phone is navigating away from the page being drawn.
+    pub leaving: bool,
     /// Turnstile demo: entrance replays, and how slowly to play it.
     pub turnstile_replays: usize,
     pub turnstile_exits: usize,
@@ -85,8 +87,8 @@ pub struct DemoState {
     // chrome
     pub battery: f32,
     pub tray_opaque: bool,
-    pub motion_direction: Direction,
-    pub motion_replays: usize,
+    /// Bumps every few seconds so the motion page's specimens replay.
+    pub motion_loop: usize,
 }
 
 impl DemoState {
@@ -96,6 +98,7 @@ impl DemoState {
             more_tiles: false,
             launched: None,
             launches: 0,
+            leaving: false,
             turnstile_replays: 0,
             turnstile_exits: 0,
             pivot: 0,
@@ -129,8 +132,7 @@ impl DemoState {
             toast_log: "no toasts yet".into(),
             battery: 0.8,
             tray_opaque: false,
-            motion_direction: Direction::Forward,
-            motion_replays: 0,
+            motion_loop: 0,
         }
     }
 }
@@ -164,7 +166,7 @@ pub fn render(page: Page, s: &DemoState, window: &mut Window, cx: &mut Context<C
         Page::Toast => overlays::toast_page(s, cx),
         Page::SystemTray => Demo::new(chrome::tray_page(s, cx)),
         Page::Header => Demo::new(chrome::header_page()),
-        Page::Motion => Demo::new(chrome::motion_page(s, cx)),
+        Page::Motion => Demo::new(chrome::motion_page(s, window, cx)),
     }
 }
 

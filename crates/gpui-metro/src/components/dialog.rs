@@ -15,7 +15,7 @@ use crate::{
     Icon, Theme,
     button::{ClickHandler, button},
     chrome::PAGE_MARGIN,
-    motion::{Direction, enter},
+    motion::swivel_in,
     theme::{SEMIBOLD, size},
 };
 
@@ -62,7 +62,7 @@ impl MessageBox {
 }
 
 impl RenderOnce for MessageBox {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = Theme::palette(cx);
         let buttons = self.buttons.into_iter().enumerate().map(|(ix, (label, f))| {
             div().flex_1().child(button(("msgbox-btn", ix), label).full_width().on_click(move |e, w, cx| f(e, w, cx)))
@@ -92,11 +92,13 @@ impl RenderOnce for MessageBox {
             .bg(p.scrim)
             .occlude()
             .when_some(self.on_dismiss, |el, f| el.on_click(move |e, w, cx| f(e, w, cx)))
-            .child(enter("msgbox-in", Direction::Down, 0, band, cx))
+            .child(swivel_in("msgbox-in", div().w_full().child(band), window, cx))
     }
 }
 
-/// A toast notification.
+/// A toast notification. It swivels in once per `id`: render a newer toast
+/// of the same kind under the same id and it updates in place instead of
+/// interrupting again.
 #[derive(IntoElement)]
 pub struct Toast {
     id: ElementId,
@@ -126,7 +128,7 @@ impl Toast {
 }
 
 impl RenderOnce for Toast {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = Theme::palette(cx);
         let ink = p.accent_ink;
         let band = div()
@@ -147,11 +149,10 @@ impl RenderOnce for Toast {
                 el.child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(m))
             })
             .when_some(self.on_click, |el, f| el.cursor_pointer().on_click(move |e, w, cx| f(e, w, cx)));
-        div().absolute().top_0().left_0().right_0().child(enter(
+        div().absolute().top_0().left_0().right_0().child(swivel_in(
             ElementId::from((SharedString::from(format!("{}-in", self.id)), 0usize)),
-            Direction::Down,
-            0,
-            band,
+            div().w_full().child(band),
+            window,
             cx,
         ))
     }

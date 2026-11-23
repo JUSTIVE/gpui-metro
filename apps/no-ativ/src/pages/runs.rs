@@ -266,6 +266,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
                     cx.notify();
                 });
                 app.toast(
+                    "refreshed",
                     Icon::Refresh,
                     "refreshed",
                     "latest readings pulled from the floor",

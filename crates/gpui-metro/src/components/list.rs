@@ -14,7 +14,7 @@ use crate::{
     Icon, Theme,
     button::ClickHandler,
     chrome::PAGE_MARGIN,
-    motion::{Direction, enter},
+    motion::{Direction, enter_div},
     theme::{LIGHT, SEMILIGHT, size},
 };
 
@@ -248,7 +248,7 @@ impl RenderOnce for JumpList {
                 let state = state.clone();
                 let scroll = scroll.clone();
                 let enabled = target.is_some();
-                div()
+                let cell = div()
                     .id(("jump-key", ix))
                     .flex()
                     .items_end()
@@ -267,7 +267,9 @@ impl RenderOnce for JumpList {
                                 cx.notify();
                             });
                         })
-                    })
+                    });
+                // The jump grid's tiles turnstile in, feathered.
+                enter_div(("jump-key-in", ix), Direction::Forward, ix.min(12), div().size(u(96.)).child(cell), cx)
             });
             let close = state.clone();
             div()
@@ -280,13 +282,7 @@ impl RenderOnce for JumpList {
                     s.grid_open = false;
                     cx.notify();
                 }))
-                .child(enter(
-                    "jump-grid-in",
-                    Direction::Down,
-                    0,
-                    div().flex().flex_wrap().gap(u(10.)).p(u(PAGE_MARGIN)).pt(u(40.)).children(cells),
-                    cx,
-                ))
+                .child(div().flex().flex_wrap().gap(u(10.)).p(u(PAGE_MARGIN)).pt(u(40.)).children(cells))
         });
 
         div().relative().size_full().font_family(Theme::font(cx)).child(list).children(grid)

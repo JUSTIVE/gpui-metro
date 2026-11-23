@@ -9,10 +9,20 @@
 //! [`crate::Scaled`], text included), so a page reads as swinging in
 //! edge-first rather than sliding or fading.
 //!
-//! Timings follow the Windows Phone Toolkit's `TurnstileTransition`:
-//! forward-in swings from −80° in 350 ms on an exponential ease-out
-//! (exponent 6); back-in from 50°; turnstile-out swings to 90° on an ease-in.
+//! Only Metro's own motions live here, after the Windows Phone Toolkit:
+//!
+//! * **Turnstile** ([`enter_div`]): pages swing about the left edge;
+//!   forward-in from −80°, back-in from 50°, 350 ms, exponential ease-out
+//!   (exponent 6). Tiles turnstile out to 90° on an ease-in.
+//! * **Turnstile feather** ([`enter`] with an index): items swing in one
+//!   after another, top first.
+//! * **Swivel** ([`swivel_in`]): pop-ups (message box, toast) swing in about
+//!   a horizontal axis through their middle.
+//! * **Slide** ([`slide_in`]): a pivot pane slides in from the side.
+//! * **Tilt** ([`tilt`]): a pressed element sinks under the pointer.
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
@@ -63,14 +73,13 @@ pub const PERSPECTIVE: f32 = 1000.;
 /// Width assumed for page content when projecting it (a 480 px page minus margins).
 pub const PAGE_CONTENT_WIDTH: f32 = 432.;
 
+/// Which way navigation went; decides where a turnstile swings in from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
     /// Forward navigation: swings in from −80°.
     Forward,
     /// Back navigation: swings in from 50°.
     Backward,
-    /// Drops in from above (toasts, message boxes, jump grid).
-    Down,
 }
 
 fn reduced(cx: &App) -> bool {
@@ -135,41 +144,66 @@ pub fn enter_div(
     id: impl Into<ElementId>,
     direction: Direction,
     index: usize,
+    wrapper: gpui::Div,
+    cx: &App,
+) -> gpui::AnyElement {
+    let from = if direction == Direction::Forward { FORWARD_IN_DEG } else { BACKWARD_IN_DEG };
+    let swing = Animation::new(ENTER).with_easing(ease_out_exp6);
+    turn_div(id.into(), (from, 0.), FEATHER * index as u32, swing, false, wrapper, cx)
+}
+
+/// How long a page takes to turnstile out.
+pub const EXIT: Duration = Duration::from_millis(250);
+/// Where a forward exit swings to (away from the viewer).
+pub const FORWARD_OUT_DEG: f32 = 50.;
+/// Where a back exit swings to (toward the viewer).
+pub const BACKWARD_OUT_DEG: f32 = -80.;
+
+/// Turnstile-out: the page swings away about the left edge in [`EXIT`] on
+/// an ease-in, and is hidden once it has gone. Render it in place of the
+/// old page for `EXIT`, then swap in the new one with [`enter_div`].
+pub fn exit_div(id: impl Into<ElementId>, direction: Direction, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
+    let to = if direction == Direction::Forward { FORWARD_OUT_DEG } else { BACKWARD_OUT_DEG };
+    let swing = Animation::new(EXIT).with_easing(ease_in_exp6);
+    turn_div(id.into(), (0., to), Duration::ZERO, swing, true, wrapper, cx)
+}
+
+/// The turnstile itself: `wrapper` turns from `degrees.0` to `degrees.1`
+/// after `delay`, invisible while it waits (and at the end, if `vanish`).
+fn turn_div(
+    id: ElementId,
+    degrees: (f32, f32),
+    delay: Duration,
+    swing: Animation,
+    vanish: bool,
     mut wrapper: gpui::Div,
     cx: &App,
 ) -> gpui::AnyElement {
     if reduced(cx) {
         return wrapper.into_any_element();
     }
-    let id = id.into();
-    let delay = FEATHER * index as u32;
     let mut animations = Vec::with_capacity(2);
     if !delay.is_zero() {
         animations.push(Animation::new(delay));
     }
     let delayed = animations.len() == 1;
-    animations.push(Animation::new(ENTER).with_easing(ease_out_exp6));
+    animations.push(swing);
     let progress = move |phase: usize, t: f32| if delayed && phase == 0 { 0. } else { t };
-    // A feathered item is invisible until its turn comes.
-    let waiting = move |phase: usize| delayed && phase == 0;
+    // A feathered item is invisible until its turn comes; an exit once it's gone.
+    let waiting = move |phase: usize, t: f32| (delayed && phase == 0) || (vanish && t >= 0.999);
 
-    if direction == Direction::Down {
-        return wrapper
-            .relative()
-            .with_animations(id, animations, move |el, phase, t| {
-                let t = progress(phase, t);
-                el.top(u(-24. * (1. - t))).opacity(t)
-            })
-            .into_any_element();
-    }
-
-    let from = if direction == Direction::Forward { FORWARD_IN_DEG } else { BACKWARD_IN_DEG };
     let metrics = cx.try_global::<Theme>().map_or((PAGE_MARGIN, PAGE_CONTENT_WIDTH), |t| t.page_metrics);
-    let fraction = move |phase, t| page_turn(lerp(from, 0., progress(phase, t)), metrics);
+    let fraction = move |phase, t| page_turn(lerp(degrees.0, degrees.1, progress(phase, t)), metrics);
 
     // The clip keeps the wrapper's own sizing in its parent's layout…
     let mut clip = div().relative().overflow_hidden();
     let fills_height;
+    // A wrapper with its own absolute width (a grid cell) narrows from that
+    // width; anything else narrows from its parent's.
+    let own_width = match wrapper.style().size.width {
+        Some(gpui::Length::Definite(gpui::DefiniteLength::Absolute(a))) => Some(a),
+        _ => None,
+    };
     {
         let (src, dst) = (wrapper.style(), clip.style());
         fills_height = src.size.height.is_some();
@@ -189,14 +223,24 @@ pub fn enter_div(
     let content = content.with_animations(id.clone(), animations.clone(), move |el, phase, t| {
         let (f, _) = fraction(phase, t);
         let s = if fills_height { content_scale(f) } else { 1. };
-        let el = el.scale(s).w(relative(s / f.max(0.02))).top(relative((1. - s) / 2.));
+        let el = match own_width {
+            Some(w) => el.w(w),
+            None => el.w(relative(s / f.max(0.02))),
+        };
+        let el = el.scale(s).top(relative((1. - s) / 2.));
         if fills_height { el.h(relative(s)) } else { el }
     });
     clip.child(content)
         .with_animations(id, animations, move |el, phase, t| {
             let (f, offset) = fraction(phase, t);
-            let hidden = waiting(phase) || f < 0.04;
-            el.w(relative(f.max(0.02))).ml(u(offset)).opacity(if hidden { 0. } else { 1. })
+            let hidden = waiting(phase, t) || f < 0.04;
+            let f = f.max(0.02);
+            let el = match own_width {
+                Some(gpui::AbsoluteLength::Pixels(w)) => el.w(w * f),
+                Some(gpui::AbsoluteLength::Rems(r)) => el.w(gpui::rems(r.0 * f)),
+                None => el.w(relative(f)),
+            };
+            el.ml(u(offset)).opacity(if hidden { 0. } else { 1. })
         })
         .into_any_element()
 }
@@ -204,7 +248,7 @@ pub fn enter_div(
 /// Pivot-style entrance: the whole pane slides in from the side it came
 /// from, without fading, decelerating hard (500 ms, exponent 6).
 pub fn slide_in(id: impl Into<ElementId>, direction: Direction, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
-    if reduced(cx) || direction == Direction::Down {
+    if reduced(cx) {
         return wrapper.into_any_element();
     }
     let sign = if direction == Direction::Forward { 1. } else { -1. };
@@ -214,6 +258,123 @@ pub fn slide_in(id: impl Into<ElementId>, direction: Direction, wrapper: gpui::D
             el.left(relative(sign * 0.6 * (1. - t)))
         })
         .into_any_element()
+}
+
+/// Where a swivel starts: the pop-up is turned this far about its
+/// horizontal axis, nearly edge-on.
+pub const SWIVEL_IN_DEG: f32 = 70.;
+
+/// Swivel-in (the WP Toolkit's `SwivelTransition`): `wrapper` swings in
+/// about a horizontal axis through its middle, from nearly edge-on. Its
+/// height is projected (cos θ, with perspective) and the content is cropped
+/// symmetrically around the axis, so the band opens from its centre line.
+/// The wrapper is measured on its first frame, during which it is hidden.
+pub fn swivel_in(id: impl Into<ElementId>, wrapper: gpui::Div, window: &mut Window, cx: &mut App) -> gpui::AnyElement {
+    if reduced(cx) {
+        return wrapper.into_any_element();
+    }
+    let id = id.into();
+    let height = window
+        .use_keyed_state(ElementId::from((SharedString::from(format!("{id}-swivel")), 0usize)), cx, |_, _| {
+            Rc::new(Cell::new(None::<f32>))
+        })
+        .read(cx)
+        .clone();
+    let measure = height.clone();
+    let wrapper = wrapper.relative().child(
+        gpui::canvas(move |b, _, _| measure.set(Some(f32::from(b.size.height))), |_, _, _, _| {})
+            .absolute()
+            .inset_0(),
+    );
+    let animation = Animation::new(ENTER).with_easing(ease_out_exp6);
+    // Projected height of a band `h` tall turned by `deg` about its middle.
+    let projected = |h: f32, deg: f32| {
+        let (sin, cos) = deg.to_radians().sin_cos();
+        let half = h / 2.;
+        let k = PERSPECTIVE / (PERSPECTIVE + half * sin).max(1.);
+        2. * half * cos * k
+    };
+    let (h_content, h_clip) = (height.clone(), height);
+    let content = wrapper.with_animation(id.clone(), animation.clone(), move |el, t| match h_content.get() {
+        Some(h) => el.top(gpui::px(-(h - projected(h, lerp(SWIVEL_IN_DEG, 0., t))) / 2.)),
+        None => el,
+    });
+    div()
+        .relative()
+        .w_full()
+        .overflow_hidden()
+        .child(content)
+        .with_animation(id, animation, move |el, t| match h_clip.get() {
+            Some(h) => el.h(gpui::px(projected(h, lerp(SWIVEL_IN_DEG, 0., t)))),
+            None => el.opacity(0.),
+        })
+        .into_any_element()
+}
+
+/// How far a pressed element sinks (the Toolkit's `TiltEffect`, flattened:
+/// GPUI can't tilt, so the press reads as the element pushed back).
+pub const TILT_SCALE: f32 = 0.94;
+
+struct Press {
+    down: bool,
+}
+
+/// The tilt effect. Returns a fixed-size-agnostic press surface: style its
+/// size on the result (it centres `child`), add your click handler, and the
+/// child sinks to [`TILT_SCALE`] while the pointer holds it down, then
+/// springs back. Layout never changes; only the child's rendering scales.
+pub fn tilt(id: impl Into<ElementId>, child: impl IntoElement, window: &mut Window, cx: &mut App) -> gpui::Stateful<gpui::Div> {
+    use gpui::{InteractiveElement, MouseButton};
+    let id = id.into();
+    let key = SharedString::from(format!("{id}-tilt"));
+    let press = window.use_keyed_state(ElementId::from((key.clone(), 0usize)), cx, |_, _| Press { down: false });
+    let down = press.read(cx).down && !reduced(cx);
+    let (was, generation) = track(ElementId::from((key.clone(), 1usize)), down, window, cx);
+    let target = if down { TILT_SCALE } else { 1. };
+    let from = if was { TILT_SCALE } else { 1. };
+    let inner = crate::scaled::scaled(target).child(child);
+    let inner = if generation > 0 && from != target {
+        // Pressing is near-instant; the spring back is a touch slower.
+        let ms = if down { 60 } else { 180 };
+        inner
+            .with_animation(
+                generation_id(&key, generation),
+                Animation::new(Duration::from_millis(ms)).with_easing(ease_out_exp6),
+                move |el, t| el.scale(lerp(from, target, t)),
+            )
+            .into_any_element()
+    } else {
+        inner.into_any_element()
+    };
+    let set = |value: bool| {
+        let press = press.clone();
+        move |_: &gpui::MouseDownEvent, _: &mut Window, cx: &mut App| {
+            press.update(cx, |p, cx| {
+                p.down = value;
+                cx.notify();
+            })
+        }
+    };
+    let release = {
+        let press = press.clone();
+        move |_: &gpui::MouseUpEvent, _: &mut Window, cx: &mut App| {
+            press.update(cx, |p, cx| {
+                if p.down {
+                    p.down = false;
+                    cx.notify();
+                }
+            })
+        }
+    };
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .justify_center()
+        .on_mouse_down(MouseButton::Left, set(true))
+        .on_mouse_up(MouseButton::Left, release.clone())
+        .on_mouse_up_out(MouseButton::Left, release)
+        .child(inner)
 }
 
 /// Remembers a value across frames and reports when it changes, so a

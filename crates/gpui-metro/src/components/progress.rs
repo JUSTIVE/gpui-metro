@@ -1,7 +1,6 @@
 //! Progress: the flat accent bar, the five flowing dots of the indeterminate
 //! bar, and the orbiting dots of the progress ring.
 
-use std::f32::consts::TAU;
 use std::time::Duration;
 
 use gpui::{
@@ -11,7 +10,7 @@ use gpui::{
 
 use crate::theme::u;
 
-use crate::{Theme, motion::ease_in_out_cubic};
+use crate::Theme;
 
 /// `None` = indeterminate.
 #[derive(IntoElement)]
@@ -95,7 +94,9 @@ impl RenderOnce for ProgressBar {
     }
 }
 
-/// Dots chasing each other round a circle.
+/// The Windows 8 progress ring: five dots that set off one after another
+/// from the lower left, rush round, crowd together near the top, lap again
+/// and vanish, then start over.
 #[derive(IntoElement)]
 pub struct ProgressRing {
     id: ElementId,
@@ -103,7 +104,7 @@ pub struct ProgressRing {
 }
 
 pub fn progress_ring(id: impl Into<ElementId>) -> ProgressRing {
-    ProgressRing { id: id.into(), diameter: 48. }
+    ProgressRing { id: id.into(), diameter: 40. }
 }
 
 impl ProgressRing {
@@ -113,27 +114,83 @@ impl ProgressRing {
     }
 }
 
+/// Dots in the ring.
+pub const RING_DOTS: usize = 5;
+/// One full cycle of a dot.
+const RING_CYCLE: f32 = 5.5;
+/// Each dot sets off this long after the one before it.
+const RING_STAGGER: f32 = 0.24;
+
+/// The ring's keyframes (WinJS `win-progress-ring`): (cycle fraction,
+/// clockwise degrees from twelve o'clock, easing into the next keyframe).
+const RING_KEYS: [(f32, f32, Ease); 6] = [
+    (0.00, 225., Ease::Out),
+    (0.07, 345., Ease::Linear),
+    (0.30, 455., Ease::InOut),
+    (0.39, 690., Ease::Linear),
+    (0.70, 815., Ease::Out),
+    (0.75, 945., Ease::Linear),
+];
+
+#[derive(Clone, Copy)]
+enum Ease {
+    Linear,
+    Out,
+    InOut,
+}
+
+impl Ease {
+    fn apply(self, t: f32) -> f32 {
+        match self {
+            Ease::Linear => t,
+            Ease::Out => 1. - (1. - t) * (1. - t),
+            Ease::InOut => t * t * (3. - 2. * t),
+        }
+    }
+}
+
+/// Where one dot is at cycle fraction `t` (0–1, its own clock): its angle
+/// in degrees clockwise from the top, or `None` while it is hidden.
+pub fn ring_dot(t: f32) -> Option<f32> {
+    let t = t.rem_euclid(1.);
+    if t >= 0.76 {
+        return None;
+    }
+    let (end, end_deg, _) = RING_KEYS[RING_KEYS.len() - 1];
+    if t >= end {
+        return Some(end_deg);
+    }
+    let i = RING_KEYS.iter().rposition(|k| k.0 <= t).unwrap_or(0);
+    let (t0, a0, ease) = RING_KEYS[i];
+    let (t1, a1, _) = RING_KEYS[i + 1];
+    Some(a0 + (a1 - a0) * ease.apply((t - t0) / (t1 - t0)))
+}
+
 impl RenderOnce for ProgressRing {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let accent = Theme::palette(cx).accent;
         let d = self.diameter;
-        let dot = (d / 10.).max(3.);
+        let dot = (d / 8.).max(3.);
         let r = (d - dot) / 2.;
+        // One animation over the whole staggered cycle; each dot reads its own clock.
+        let total = RING_CYCLE + RING_STAGGER * (RING_DOTS - 1) as f32;
         div()
             .relative()
             .flex_none()
             .size(u(d))
-            .with_animation(self.id, Animation::new(Duration::from_millis(2400)).repeat(), move |el, t| {
+            .with_animation(self.id, Animation::new(Duration::from_secs_f32(total)).repeat(), move |el, t| {
+                let now = t * total;
                 let mut el = el;
-                for i in 0..6 {
-                    let local = (t - i as f32 * 0.04).rem_euclid(1.);
-                    // Two laps per cycle, each eased so the dots bunch at the top.
-                    let lap = (local * 2.).fract();
-                    let angle = ease_in_out_cubic(lap) * TAU - TAU / 4.;
-                    let (x, y) = (r + r * angle.cos(), r + r * angle.sin());
-                    el = el.child(
-                        div().absolute().left(u(x)).top(u(y)).size(u(dot)).rounded_full().bg(accent),
-                    );
+                for i in 0..RING_DOTS {
+                    let local = now - i as f32 * RING_STAGGER;
+                    if !(0. ..RING_CYCLE).contains(&local) {
+                        continue;
+                    }
+                    if let Some(deg) = ring_dot(local / RING_CYCLE) {
+                        let a = deg.to_radians();
+                        let (x, y) = (r + r * a.sin(), r - r * a.cos());
+                        el = el.child(div().absolute().left(u(x)).top(u(y)).size(u(dot)).rounded_full().bg(accent));
+                    }
                 }
                 el
             })
@@ -155,5 +212,15 @@ mod tests {
         assert_eq!(dot_position(0, 0.), Some(0.));
         assert!(dot_position(0, 0.72).unwrap() > 1.0, "dots leave the bar");
         assert_eq!(dot_position(0, 0.9), None);
+    }
+
+    #[test]
+    fn ring_dots_only_ever_go_clockwise_then_vanish() {
+        let angles: Vec<f32> = (0..76).filter_map(|i| ring_dot(i as f32 / 100.)).collect();
+        assert_eq!(angles.len(), 76);
+        assert!(angles.windows(2).all(|w| w[1] >= w[0] - 1e-3), "{angles:?}");
+        assert_eq!(ring_dot(0.), Some(225.), "sets off from the lower left");
+        assert!((ring_dot(0.755).unwrap() - 945.).abs() < 1e-3, "two laps and a bit");
+        assert_eq!(ring_dot(0.8), None, "hidden until the next cycle");
     }
 }

@@ -18,7 +18,7 @@ use crate::theme::u;
 use crate::{
     Icon, Theme,
     chrome::PAGE_MARGIN,
-    motion::{ENTER, Turn, ease_in_exp6, ease_in_out_cubic, ease_out_exp6, turn},
+    motion::{self, ENTER, Turn, ease_in_exp6, ease_in_out_cubic, ease_out_exp6, turn},
     scaled::scaled,
     theme::size,
 };
@@ -225,7 +225,7 @@ pub fn peek_offset(t: f32, slide: f32) -> f32 {
 pub const PEEK_SLIDE_SECS: f32 = 0.9;
 
 impl RenderOnce for Tile {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = Theme::palette(cx);
         let font = Theme::font(cx);
         let reduced = Theme::get(cx).reduced_motion;
@@ -283,19 +283,18 @@ impl RenderOnce for Tile {
             _ => face(front, true).into_any_element(),
         };
 
-        div()
-            .id(self.id)
-            .relative()
-            .flex_none()
-            .w(u(w))
-            .h(u(h))
-            .overflow_hidden()
-            .bg(bg)
-            .font_family(font)
-            .child(body)
-            .when_some(self.on_click, |el, f| {
-                el.cursor_pointer().active(|s| s.opacity(0.8)).on_click(move |e, w, cx| f(e, w, cx))
-            })
+        let face = div().relative().w(u(w)).h(u(h)).overflow_hidden().bg(bg).font_family(font).child(body);
+        match self.on_click {
+            // A tappable tile tilts under the pointer.
+            Some(f) => motion::tilt(self.id, face, window, cx)
+                .flex_none()
+                .w(u(w))
+                .h(u(h))
+                .cursor_pointer()
+                .on_click(move |e, w, cx| f(e, w, cx))
+                .into_any_element(),
+            None => div().id(self.id).flex_none().child(face).into_any_element(),
+        }
     }
 }
 
@@ -352,6 +351,7 @@ pub struct TileGrid {
     gap: f32,
     turnstile: bool,
     replay: usize,
+    leave: bool,
     hinge: f32,
 }
 
@@ -366,6 +366,7 @@ pub fn tile_grid() -> TileGrid {
         gap: TILE_GAP,
         turnstile: false,
         replay: 0,
+        leave: false,
         hinge: PAGE_MARGIN,
     }
 }
@@ -424,6 +425,14 @@ impl TileGrid {
     /// motion nothing moves and clicks run at once.
     pub fn turnstile(mut self, on: bool) -> Self {
         self.turnstile = on;
+        self
+    }
+    /// Swing every tile away now (in reading order), as when the start
+    /// screen is left without a tile being tapped. Keep it set while the
+    /// grid is still on screen; remove the grid after [`EXIT_TILE`] plus
+    /// the wave (at most ~0.5 s).
+    pub fn leave(mut self, leave: bool) -> Self {
+        self.leave = leave;
         self
     }
     /// Change this to replay the entrance without remounting the grid.
@@ -619,6 +628,11 @@ impl RenderOnce for TileGrid {
             let e = e.read(cx);
             e.tapped.map(|t| (t, e.generation))
         });
+        // Leaving without a tap: everyone goes, in reading order.
+        let leaving = match leaving {
+            None if self.leave && !reduced => Some((usize::MAX, usize::MAX)),
+            l => l,
+        };
         let schedule = leaving.map(|(t, _)| exit_schedule(&positions, t).0);
         // Exit length per tapped tile, so each click knows when to launch.
         let totals: Vec<Duration> = if exit.is_some() {

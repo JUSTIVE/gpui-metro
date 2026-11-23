@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use gpui::{
-    App, ClipboardItem, FocusHandle, KeyBinding, ScrollHandle, SharedString, Subscription, Task, Window,
+    App, ClipboardItem, ElementId, FocusHandle, KeyBinding, ScrollHandle, SharedString, Subscription, Task, Window,
     actions, div, prelude::*,
 };
 use gpui_metro::{
@@ -47,6 +47,9 @@ pub enum Dialog {
 }
 
 struct ActiveToast {
+    /// What the toast is about. A new toast of the same kind updates this
+    /// one in place (same id, so it doesn't swivel in again).
+    kind: &'static str,
     title: SharedString,
     message: SharedString,
     icon: Icon,
@@ -214,7 +217,7 @@ impl NoAtiv {
         });
         match result {
             Ok((code, titer)) => {
-                self.toast(Icon::Flask, code, format!("harvested · titer {titer}"), cx)
+                self.toast("harvest", Icon::Flask, code, format!("harvested · titer {titer}"), cx)
             }
             Err(e) => {
                 let message = e.to_string().into();
@@ -241,6 +244,7 @@ impl NoAtiv {
 
     pub fn toast(
         &mut self,
+        kind: &'static str,
         icon: Icon,
         title: impl Into<SharedString>,
         message: impl Into<SharedString>,
@@ -249,6 +253,7 @@ impl NoAtiv {
         self.toasts += 1;
         let serial = self.toasts;
         self.toast = Some(ActiveToast {
+            kind,
             title: title.into(),
             message: message.into(),
             icon,
@@ -268,7 +273,7 @@ impl NoAtiv {
     }
 
     pub fn copy(&mut self, text: String, cx: &mut Context<Self>) {
-        self.toast(Icon::Check, "copied", text.clone(), cx);
+        self.toast("copied", Icon::Check, "copied", text.clone(), cx);
         cx.write_to_clipboard(ClipboardItem::new_string(text));
     }
 
@@ -363,7 +368,7 @@ impl Render for NoAtiv {
                     .w(u(380.))
                     .h(u(60.))
                     .child(
-                        toast(("toast", t.serial), t.title.clone())
+                        toast(ElementId::Name(t.kind.into()), t.title.clone())
                             .message(t.message.clone())
                             .icon(t.icon)
                             .on_click(nav.click(|app, _, cx| {
@@ -479,10 +484,22 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    fn a_toast_of_the_same_kind_updates_in_place(cx: &mut TestAppContext) {
+        let (app, cx) = boot(None, cx);
+        app.update(cx, |a, cx| a.toast("refreshed", Icon::Refresh, "refreshed", "first", cx));
+        app.update(cx, |a, cx| a.toast("refreshed", Icon::Refresh, "refreshed", "second", cx));
+        let (kind, message) = app.read_with(cx, |a, _| {
+            let t = a.toast.as_ref().expect("a toast is up");
+            (t.kind, t.message.clone())
+        });
+        assert_eq!((kind, message.as_ref()), ("refreshed", "second"), "same id, new content");
+    }
+
+    #[gpui::test]
     fn toasts_dismiss_themselves_and_telemetry_ticks(cx: &mut TestAppContext) {
         let (app, cx) = boot(None, cx);
         let before = app.read_with(cx, |a, cx| a.store.read(cx).run("r1").map(|r| r.od600));
-        app.update(cx, |a, cx| a.toast(Icon::Check, "hello", "world", cx));
+        app.update(cx, |a, cx| a.toast("test", Icon::Check, "hello", "world", cx));
         assert!(app.read_with(cx, |a, _| a.toast.is_some()));
         cx.executor().advance_clock(TOAST_FOR + TICK);
         cx.run_until_parked();
