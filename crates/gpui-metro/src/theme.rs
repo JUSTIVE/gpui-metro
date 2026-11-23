@@ -265,6 +265,10 @@ pub struct Theme {
     pub palette: Palette,
     /// When true, components skip their entrance/transition motion.
     pub reduced_motion: bool,
+    /// Where page content sits for the turnstile projection: its distance
+    /// from the hinge (the window's left edge) and its width, in design px.
+    /// A phone page is (24, 432); a desktop app sets its own.
+    pub page_metrics: (f32, f32),
 }
 
 impl Global for Theme {}
@@ -283,6 +287,7 @@ impl Theme {
             font_family: default_font_family(),
             palette: Palette::resolve(mode, accent),
             reduced_motion: false,
+            page_metrics: (24., 432.),
         }
     }
 
@@ -311,6 +316,16 @@ impl Theme {
         t.accent = accent;
         t.palette = Palette::resolve(t.mode, accent);
         cx.refresh_windows();
+    }
+
+    /// Tells the turnstile where page content sits (see [`Theme::page_metrics`]).
+    /// Cheap and silent: safe to call from `render` as the window resizes.
+    pub fn set_page_metrics(inset: f32, width: f32, cx: &mut App) {
+        if let Some(t) = cx.try_global::<Theme>()
+            && t.page_metrics != (inset, width)
+        {
+            cx.global_mut::<Theme>().page_metrics = (inset, width);
+        }
     }
 
     pub fn set_reduced_motion(reduced: bool, cx: &mut App) {

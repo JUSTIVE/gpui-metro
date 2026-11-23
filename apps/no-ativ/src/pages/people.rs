@@ -49,21 +49,18 @@ pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
                     .members
                     .iter()
                     .filter(|m| m.left.is_some() == alumni)
-                    .enumerate()
-                    .map(|(ix, m)| nav.feather("people", ix, member_item(m), cx)),
+                    
+                    .map(member_item),
             )
         }
-        _ => scroll("roles").children(ROLES.iter().enumerate().map(|(ix, role)| {
+        _ => scroll("roles").children(ROLES.iter().map(|role| {
             let count = store
                 .data
                 .members
                 .iter()
                 .filter(|m| m.role == role.id && m.left.is_none())
                 .count();
-            nav.feather(
-                "roles",
-                ix,
-                div()
+            div()
                     .flex()
                     .flex_col()
                     .py(u(8.))
@@ -71,9 +68,7 @@ pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
                         TextStyle::Large,
                         format!("{} · {count}", role.name.to_lowercase()),
                     ))
-                    .child(subtle(role.description, cx)),
-                cx,
-            )
+                    .child(subtle(role.description, cx))
         })),
     };
     PageView::new(

@@ -1,10 +1,8 @@
 //! The page stack: what can be on it, and the handle pages use to act on the
 //! app from inside their event handlers.
 
-use gpui::{
-    AnyElement, App, ClickEvent, ElementId, Entity, SharedString, WeakEntity, Window, prelude::*,
-};
-use gpui_metro::{AppBar, TextInput, motion};
+use gpui::{AnyElement, App, ClickEvent, Entity, ScrollHandle, WeakEntity, Window, prelude::*};
+use gpui_metro::{AppBar, TextInput};
 
 use crate::app::NoAtiv;
 use crate::data::{IncidentArea, IncidentSeverity};
@@ -123,21 +121,23 @@ impl PageView {
     }
 }
 
-/// Lets page code reach the app from event handlers, and keys entrance
-/// animations to the current navigation so they replay on every visit.
+/// Lets page code reach the app from event handlers, and tells it about
+/// the window it is laid out in.
 #[derive(Clone)]
 pub struct Nav {
     app: WeakEntity<NoAtiv>,
-    generation: usize,
-    direction: motion::Direction,
+    /// Width available to the page, in design px.
+    pub page_width: f32,
+    /// The start screen's horizontal scroll, kept across visits.
+    pub start_scroll: ScrollHandle,
 }
 
 impl Nav {
-    pub fn new(app: WeakEntity<NoAtiv>, generation: usize, direction: motion::Direction) -> Self {
+    pub fn new(app: WeakEntity<NoAtiv>, page_width: f32, start_scroll: ScrollHandle) -> Self {
         Self {
             app,
-            generation,
-            direction,
+            page_width,
+            start_scroll,
         }
     }
 
@@ -182,15 +182,5 @@ impl Nav {
             });
             cx.notify();
         })
-    }
-
-    /// Feathers list items in after a navigation: item `ix` arrives
-    /// `ix × FEATHER` after the first. Items past the first screen skip it.
-    pub fn feather(&self, key: &str, ix: usize, child: impl IntoElement, cx: &App) -> AnyElement {
-        if ix >= 10 {
-            return child.into_any_element();
-        }
-        let id = ElementId::from((SharedString::from(format!("{key}-{}", self.generation)), ix));
-        motion::enter(id, self.direction, ix + 1, child, cx)
     }
 }

@@ -49,27 +49,27 @@ pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
         scroll("deck-today").children(
             store
                 .deck_today()
-                .enumerate()
-                .map(|(ix, b)| nav.feather("deck", ix, booking(b, store, nav, cx), cx)),
+                
+                .map(|b| booking(b, store, nav, cx)),
         )
     } else {
-        scroll("deck-instruments").children(store.data.instruments.iter().enumerate().map(
-            |(ix, i)| {
+        scroll("deck-instruments").children(store.data.instruments.iter().map(
+            |i| {
                 let tone = match i.state {
                     InstrumentState::Down => alarm(),
                     InstrumentState::Cip => warn(),
                     InstrumentState::Running => Theme::palette(cx).accent,
                     InstrumentState::Ready => Accent::Emerald.color(),
                 };
-                let item = list_item(
+                
+                list_item(
                     SharedString::from(format!("instrument-{}", i.id)),
                     i.code.clone(),
                 )
                 .leading_icon(Icon::Gauge)
                 .leading_color(tone)
                 .subtitle(format!("{} for {} h", i.state.as_str(), i.since_hours))
-                .detail(format!("{} · {} cycles", i.kind, i.cycles));
-                nav.feather("instruments", ix, item, cx)
+                .detail(format!("{} · {} cycles", i.kind, i.cycles))
             },
         ))
     };

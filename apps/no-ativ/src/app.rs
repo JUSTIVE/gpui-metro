@@ -1,13 +1,16 @@
-//! The phone: system tray, the page on top of the back stack, its app bar,
-//! the hardware buttons, and whatever is interrupting (message box, toast).
+//! The desktop shell, Windows 8 style: the page on top of the back stack in
+//! the full window, a round back button in the left margin, the page's app
+//! bar along the bottom, and whatever is interrupting (message box, toast).
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use gpui::{
-    App, ClipboardItem, FocusHandle, KeyBinding, SharedString, Subscription, Task, Window, actions,
-    div, prelude::*, px,
+    App, ClipboardItem, FocusHandle, KeyBinding, ScrollHandle, SharedString, Subscription, Task, Window,
+    actions, div, prelude::*,
 };
-use gpui_metro::{Icon, Theme, message_box, motion, motion::Direction, system_tray, toast};
+use gpui_metro::{
+    Icon, PAGE_MARGIN, Theme, message_box, motion, motion::Direction, round_button, toast, u,
+};
 
 use crate::data::{seed, to_fixed};
 use crate::nav::{IncidentForm, Nav, Page, PageView};
@@ -20,6 +23,9 @@ const CONTEXT: &str = "NoAtiv";
 /// Telemetry interval.
 const TICK: Duration = Duration::from_secs(2);
 const TOAST_FOR: Duration = Duration::from_secs(3);
+/// Windows 8 pages start content 120 px in; the components already pad by
+/// the phone margin, so the shell adds the rest. The back button sits here.
+pub const LEFT_GUTTER: f32 = 120. - PAGE_MARGIN;
 
 pub fn bind_keys(cx: &mut App) {
     // The text box binds backspace itself, deeper in the key context, so
@@ -57,6 +63,7 @@ pub struct NoAtiv {
     toast: Option<ActiveToast>,
     toasts: usize,
     focus: FocusHandle,
+    start_scroll: ScrollHandle,
     _toast_timer: Option<Task<()>>,
     _ticker: Task<()>,
     _store_changed: Subscription,
@@ -92,6 +99,7 @@ impl NoAtiv {
             toast: None,
             toasts: 0,
             focus,
+            start_scroll: ScrollHandle::new(),
             _toast_timer: None,
             _ticker: ticker,
         };
@@ -171,16 +179,6 @@ impl NoAtiv {
             .collect();
         let form = IncidentForm::new(choices, run_id, cx);
         self.push(Page::NewIncident(Box::new(form)), window, cx);
-    }
-
-    /// The start button: straight back to the tiles.
-    pub fn home(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.dialog = None;
-        if self.stack.len() > 1 {
-            self.stack.truncate(1);
-            self.navigated(Direction::Backward, window, cx);
-        }
-        cx.notify();
     }
 
     fn navigated(&mut self, direction: Direction, window: &mut Window, cx: &mut Context<Self>) {
@@ -300,20 +298,13 @@ impl NoAtiv {
     }
 }
 
-/// `hh:mm` on the foundry floor (Seoul, UTC+9).
-fn floor_clock() -> String {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-        + 9 * 3600;
-    format!("{}:{:02}", (secs / 3600) % 24, (secs / 60) % 60)
-}
-
 impl Render for NoAtiv {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Theme::palette(cx);
-        let nav = Nav::new(cx.entity().downgrade(), self.generation, self.direction);
+        let page_width = f32::from(window.viewport_size().width) - LEFT_GUTTER;
+        // The turnstile hinges on the window edge, across the whole page.
+        Theme::set_page_metrics(LEFT_GUTTER + PAGE_MARGIN, page_width - 2. * PAGE_MARGIN, cx);
+        let nav = Nav::new(cx.entity().downgrade(), page_width, self.start_scroll.clone());
         let PageView { body, app_bar } = pages::render(self.top(), self.store.read(cx), &nav, cx);
         let page_key = SharedString::from(format!("page-{}", self.generation));
         let body = motion::enter_div(
@@ -324,22 +315,13 @@ impl Render for NoAtiv {
             cx,
         );
 
-        let hardware =
-            |id: &'static str,
-             icon: Icon,
-             f: fn(&mut NoAtiv, &mut Window, &mut Context<NoAtiv>)| {
-                div()
-                    .id(id)
-                    .flex()
-                    .flex_1()
-                    .h_full()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .active(|s| s.opacity(0.5))
-                    .child(icon.render(px(22.), gpui::white().opacity(0.8)))
-                    .on_click(nav.click(f))
-            };
+        let back = (self.stack.len() > 1).then(|| {
+            div().absolute().left(u(40.)).top(u(44.)).child(
+                round_button("back", Icon::Back)
+                    .diameter(40.)
+                    .on_click(nav.click(NoAtiv::back)),
+            )
+        });
 
         div()
             .id("no-ativ")
@@ -353,35 +335,42 @@ impl Render for NoAtiv {
             .bg(p.background)
             .text_color(p.foreground)
             .font_family(Theme::font(cx))
-            .child(system_tray(floor_clock()).battery(0.72))
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .flex_1()
                     .min_h_0()
-                    .child(div().flex_1().min_h_0().overflow_hidden().child(body))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .pt(u(24.))
+                            .pl(u(LEFT_GUTTER))
+                            .overflow_hidden()
+                            .child(body),
+                    )
                     .children(app_bar),
             )
-            .child(
-                // The phone's capacitive keys: back and start.
-                div()
-                    .flex()
-                    .flex_none()
-                    .h(px(40.))
-                    .bg(gpui::black())
-                    .child(hardware("hw-back", Icon::Back, NoAtiv::back))
-                    .child(hardware("hw-start", Icon::Home, NoAtiv::home)),
-            )
+            .children(back)
             .children(self.render_dialog(&nav, cx))
             .children(self.toast.as_ref().map(|t| {
-                toast(("toast", t.serial), t.title.clone())
-                    .message(t.message.clone())
-                    .icon(t.icon)
-                    .on_click(nav.click(|app, _, cx| {
-                        app.toast = None;
-                        cx.notify();
-                    }))
+                // A desktop toast: a box in the top-right corner.
+                div()
+                    .absolute()
+                    .top(u(24.))
+                    .right(u(24.))
+                    .w(u(380.))
+                    .h(u(60.))
+                    .child(
+                        toast(("toast", t.serial), t.title.clone())
+                            .message(t.message.clone())
+                            .icon(t.icon)
+                            .on_click(nav.click(|app, _, cx| {
+                                app.toast = None;
+                                cx.notify();
+                            })),
+                    )
             }))
     }
 }

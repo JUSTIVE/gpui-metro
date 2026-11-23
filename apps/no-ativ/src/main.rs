@@ -1,5 +1,5 @@
-//! no ativ — a cyberpunk bio-foundry, as a Windows Phone app. The incubator
-//! for gpui-metro: a real-feeling domain that leans on every component.
+//! no ativ — a cyberpunk bio-foundry console, as a Windows 8-style desktop
+//! app. The incubator for gpui-metro: a real-feeling domain that leans on every component.
 //!
 //! `NO_ATIV_PAGE=<page>` boots straight into a page over the start screen
 //! (runs, run, telemetry, strains, strain, incidents, incident, new-incident,
@@ -22,7 +22,7 @@ fn main() {
             gpui_metro::init(cx);
             app::bind_keys(cx);
             let boot = std::env::var("NO_ATIV_PAGE").ok();
-            let screen = size(px(480.), px(800.));
+            let screen = size(px(1280.), px(820.));
             let window = cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, screen, cx))),
@@ -30,8 +30,7 @@ fn main() {
                         title: Some("no ativ".into()),
                         ..Default::default()
                     }),
-                    is_resizable: false,
-                    window_min_size: Some(screen),
+                    window_min_size: Some(size(px(900.), px(620.))),
                     ..Default::default()
                 },
                 |window, cx| cx.new(|cx| app::NoAtiv::new(boot.as_deref(), window, cx)),

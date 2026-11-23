@@ -6,7 +6,7 @@ type-first layouts, flat accent colour, live tiles, pivots and panoramas.
 ```
 crates/gpui-metro   the library
 apps/catalog        every component, live, in a phone frame (browse + theme switcher)
-apps/no-ativ        incubator: a bio-foundry console as a WP8 app suite
+apps/no-ativ        incubator: a bio-foundry console as a Windows 8-style desktop app
 ```
 
 ## Run

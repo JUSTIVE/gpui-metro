@@ -20,6 +20,9 @@ use gpui_metro::{Accent, PAGE_MARGIN, TextStyle, page_header, text};
 use crate::nav::{Nav, Page, PageView};
 use crate::store::Store;
 
+/// Lists and forms stop growing here on a wide window.
+pub const MAX_LINE: f32 = 760.;
+
 /// Application title above every page title.
 pub const APP: &str = "no ativ";
 
@@ -29,14 +32,14 @@ pub fn render(page: &Page, store: &Store, nav: &Nav, cx: &App) -> PageView {
         Page::Runs { pivot } => runs::list(*pivot, store, nav, cx),
         Page::Run { id } => runs::detail(id, store, nav, cx),
         Page::Telemetry { zone } => telemetry::render(*zone, store, nav, cx),
-        Page::Strains => strains::list(store, nav, cx),
+        Page::Strains => strains::list(store, nav),
         Page::Strain { id } => strains::detail(id, store, nav, cx),
         Page::Incidents { pivot } => incidents::list(*pivot, store, nav, cx),
         Page::Incident { id } => incidents::detail(id, store, nav, cx),
-        Page::NewIncident(form) => incidents::form(form, store, nav, cx),
+        Page::NewIncident(form) => incidents::form(form, store, nav),
         Page::Reagents { pivot } => reagents::render(*pivot, store, nav, cx),
         Page::Shipments { pivot } => shipments::render(*pivot, store, nav, cx),
-        Page::Freezer => freezer::render(store, nav, cx),
+        Page::Freezer => freezer::render(store, cx),
         Page::Deck { pivot } => deck::render(*pivot, store, nav, cx),
         Page::People { pivot } => people::render(*pivot, store, nav, cx),
         Page::Settings => settings::render(store, nav, cx),
@@ -58,6 +61,7 @@ pub fn scroll(id: impl Into<SharedString>) -> Stateful<Div> {
     div()
         .id(id.into())
         .size_full()
+        .max_w(u(MAX_LINE))
         .overflow_y_scroll()
         .px(u(PAGE_MARGIN))
         .pb(u(32.))

@@ -2,7 +2,7 @@
 
 use gpui::{App, Div, div, prelude::*, relative};
 use gpui_metro::u;
-use gpui_metro::{TextStyle, Theme, panorama, text, theme::size};
+use gpui_metro::{PAGE_MARGIN, TextStyle, Theme, panorama, text, theme::size};
 
 use crate::data::{Sensor, SensorState};
 use crate::nav::{Nav, PageView};
@@ -62,7 +62,11 @@ pub fn render(zone: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
             zones.push(&s.zone);
         }
     }
-    let mut pano = panorama("telemetry", "telemetry", zone).on_select(nav.select());
+    // A section is a bit under half the window, so the next one peeks in.
+    let section = ((nav.page_width - 2. * PAGE_MARGIN) / 2.2).clamp(380., 620.);
+    let mut pano = panorama("telemetry", "telemetry", zone)
+        .section_width(section)
+        .on_select(nav.select());
     for (ix, name) in zones.iter().enumerate() {
         let sensors = store.data.sensors.iter().filter(|s| s.zone == *name);
         let content = div()

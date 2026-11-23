@@ -35,7 +35,7 @@ fn strain_item(prefix: &str, strain: &Strain, nav: &Nav) -> impl IntoElement {
     .on_click(nav.push(move || Page::Strain { id: id.clone() }))
 }
 
-pub fn list(store: &Store, nav: &Nav, cx: &App) -> PageView {
+pub fn list(store: &Store, nav: &Nav) -> PageView {
     let mut strains: Vec<&Strain> = store.data.strains.iter().collect();
     strains.sort_by(|a, b| {
         a.name
@@ -44,9 +44,9 @@ pub fn list(store: &Store, nav: &Nav, cx: &App) -> PageView {
             .then(a.code.cmp(&b.code))
     });
     let mut groups: Vec<ListGroup> = Vec::new();
-    for (ix, strain) in strains.into_iter().enumerate() {
+    for strain in strains {
         let key = group_key(&strain.name);
-        let item = nav.feather("strains", ix, strain_item("strain", strain, nav), cx);
+        let item = strain_item("strain", strain, nav).into_any_element();
         match groups.last_mut() {
             Some(g) if g.key.as_ref() == key.as_str() => g.items.push(item),
             _ => groups.push(ListGroup::new(key, [item])),
@@ -163,11 +163,11 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
         "strains",
         strain.name.clone(),
         scroll(format!("strain-{}", strain.id))
-            .child(nav.feather("strain", 0, facts, cx))
-            .child(nav.feather("strain", 1, fitness, cx))
-            .child(nav.feather("strain", 2, lineage, cx))
-            .child(nav.feather("strain", 3, constructs, cx))
-            .child(nav.feather("strain", 4, history, cx)),
+            .child(facts)
+            .child(fitness)
+            .child(lineage)
+            .child(constructs)
+            .child(history),
     );
     PageView::new(body)
 }

@@ -103,10 +103,10 @@ pub fn turn(offset: f32, width: f32, degrees: f32) -> Turn {
 }
 
 /// Fraction of its width, and px offset of its left edge, that page content
-/// (sitting `PAGE_MARGIN` from the hinge) shows at `degrees`.
-fn page_turn(degrees: f32) -> (f32, f32) {
-    let t = turn(PAGE_MARGIN, PAGE_CONTENT_WIDTH, degrees);
-    ((t.width / PAGE_CONTENT_WIDTH).clamp(0., 1.), t.left - PAGE_MARGIN)
+/// `inset` px from the hinge and `width` wide shows at `degrees`.
+fn page_turn(degrees: f32, (inset, width): (f32, f32)) -> (f32, f32) {
+    let t = turn(inset, width, degrees);
+    ((t.width / width.max(1.)).clamp(0., 1.), t.left - inset)
 }
 
 /// How much a turned page's contents shrink. A true projection squeezes
@@ -150,6 +150,8 @@ pub fn enter_div(
     let delayed = animations.len() == 1;
     animations.push(Animation::new(ENTER).with_easing(ease_out_exp6));
     let progress = move |phase: usize, t: f32| if delayed && phase == 0 { 0. } else { t };
+    // A feathered item is invisible until its turn comes.
+    let waiting = move |phase: usize| delayed && phase == 0;
 
     if direction == Direction::Down {
         return wrapper
@@ -162,7 +164,8 @@ pub fn enter_div(
     }
 
     let from = if direction == Direction::Forward { FORWARD_IN_DEG } else { BACKWARD_IN_DEG };
-    let fraction = move |phase, t| page_turn(lerp(from, 0., progress(phase, t)));
+    let metrics = cx.try_global::<Theme>().map_or((PAGE_MARGIN, PAGE_CONTENT_WIDTH), |t| t.page_metrics);
+    let fraction = move |phase, t| page_turn(lerp(from, 0., progress(phase, t)), metrics);
 
     // The clip keeps the wrapper's own sizing in its parent's layout…
     let mut clip = div().relative().overflow_hidden();
@@ -176,21 +179,24 @@ pub fn enter_div(
         dst.flex_shrink = src.flex_shrink;
         dst.flex_basis = src.flex_basis;
     }
-    // …and narrows toward the hinge. Inside it, the content renders at
-    // rem scale `s` in a box `s` × its natural width, so it shrinks as a
-    // whole and nothing reflows. Both layers share one timeline, so they
-    // stay in step frame for frame.
+    // …and narrows toward the hinge. Content that fills its parent's height
+    // (a page) also renders at rem scale `s`, in a box `s` × its natural
+    // width, so it shrinks as a whole and nothing reflows. Content sized by
+    // itself (a list row) is only clipped: scaling it would change its
+    // height mid-turn and shove every row below it. Both layers share one
+    // timeline, so they stay in step frame for frame.
     let content = scaled(1.).relative().w_full().when(fills_height, |el| el.h_full()).child(wrapper.size_full());
     let content = content.with_animations(id.clone(), animations.clone(), move |el, phase, t| {
         let (f, _) = fraction(phase, t);
-        let s = content_scale(f);
+        let s = if fills_height { content_scale(f) } else { 1. };
         let el = el.scale(s).w(relative(s / f.max(0.02))).top(relative((1. - s) / 2.));
         if fills_height { el.h(relative(s)) } else { el }
     });
     clip.child(content)
         .with_animations(id, animations, move |el, phase, t| {
             let (f, offset) = fraction(phase, t);
-            el.w(relative(f.max(0.02))).ml(u(offset)).opacity(if f < 0.04 { 0. } else { 1. })
+            let hidden = waiting(phase) || f < 0.04;
+            el.w(relative(f.max(0.02))).ml(u(offset)).opacity(if hidden { 0. } else { 1. })
         })
         .into_any_element()
 }
@@ -280,7 +286,7 @@ mod tests {
         assert!(toward.scale_right > 1., "the far edge comes toward the viewer");
         assert_eq!(turn(24., 432., 90.).width.round(), 0., "edge-on at 90°");
         // Widths grow monotonically as an entrance settles.
-        let widths: Vec<f32> = (0..=10).map(|i| page_turn(lerp(FORWARD_IN_DEG, 0., i as f32 / 10.)).0).collect();
+        let widths: Vec<f32> = (0..=10).map(|i| page_turn(lerp(FORWARD_IN_DEG, 0., i as f32 / 10.), (PAGE_MARGIN, PAGE_CONTENT_WIDTH)).0).collect();
         assert!(widths.windows(2).all(|w| w[0] <= w[1] + 1e-6), "{widths:?}");
     }
 }

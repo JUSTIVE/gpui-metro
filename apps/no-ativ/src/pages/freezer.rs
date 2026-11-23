@@ -4,11 +4,11 @@ use gpui::{App, SharedString, div, prelude::*};
 use gpui_metro::u;
 use gpui_metro::{TextStyle, progress_bar, text};
 
-use crate::nav::{Nav, PageView};
+use crate::nav::PageView;
 use crate::pages::{heading, scroll, subtle, titled};
 use crate::store::Store;
 
-pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
+pub fn render(store: &Store, cx: &App) -> PageView {
     let (filled, slots) = store.freezer_occupancy();
     let summary = div()
         .flex()
@@ -25,7 +25,7 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
             cx,
         ));
 
-    let racks = store.data.racks.iter().enumerate().map(|(ix, rack)| {
+    let racks = store.data.racks.iter().map(|rack| {
         let boxes = rack.boxes.iter().map(|b| {
             let used = b.slots.iter().filter(|s| s.is_some()).count();
             div()
@@ -50,26 +50,21 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
                         .child(subtle(format!("{used}/{}", b.slots.len()), cx)),
                 )
         });
-        nav.feather(
-            "racks",
-            ix + 1,
-            div()
+        div()
                 .flex()
                 .flex_col()
                 .child(heading(
                     format!("{} · {}", rack.name.to_lowercase(), rack.temp),
                     cx,
                 ))
-                .children(boxes),
-            cx,
-        )
+                .children(boxes)
     });
 
     PageView::new(titled(
         "freezer",
         "freezer",
         scroll("freezer")
-            .child(nav.feather("racks", 0, summary, cx))
+            .child(summary)
             .children(racks),
     ))
 }

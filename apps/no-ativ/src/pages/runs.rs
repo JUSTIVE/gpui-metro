@@ -76,8 +76,8 @@ pub fn list(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
         })
         .children(
             runs.iter()
-                .enumerate()
-                .map(|(ix, r)| nav.feather("runs", ix, run_item("run", r, store, nav, cx), cx)),
+                
+                .map(|r| run_item("run", r, store, nav, cx)),
         );
     let body = pivot("runs-pivot", FILTERS, selected)
         .title(APP)
@@ -231,11 +231,11 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
         "runs",
         run.code.clone(),
         scroll(format!("run-{}", run.id))
-            .child(nav.feather("run", 0, summary, cx))
-            .child(nav.feather("run", 1, growth_block, cx))
-            .child(nav.feather("run", 2, facts, cx))
-            .child(nav.feather("run", 3, assay_block, cx))
-            .child(nav.feather("run", 4, log, cx)),
+            .child(summary)
+            .child(growth_block)
+            .child(facts)
+            .child(assay_block)
+            .child(log),
     );
 
     let (run_id, code) = (run.id.clone(), run.code.clone());

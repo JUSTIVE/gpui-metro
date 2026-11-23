@@ -1,9 +1,9 @@
 //! The start screen: one live tile per destination, each showing a real
 //! reading from the store.
 
-use gpui::{App, Hsla, div, prelude::*};
+use gpui::{App, Hsla, ScrollWheelEvent, div, prelude::*};
 use gpui_metro::u;
-use gpui_metro::{Accent, Icon, TileSize, theme::size, tile, tile_grid};
+use gpui_metro::{Accent, Icon, PAGE_MARGIN, TextStyle, TileSize, text, theme::size, tile, tile_grid};
 
 use crate::data::{LotState, SensorState};
 use crate::nav::{Nav, Page, PageView};
@@ -172,48 +172,77 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
         .period(10.);
 
     let to = |page: fn() -> Page| nav.push(page);
+    let strains = small("tile-strains", "strains", Icon::Dna, store.active_strains());
+    let deck = small("tile-deck", "deck", Icon::Calendar, store.deck_today().count());
+    let people = small("tile-people", "people", Icon::People, store.active_members());
+    let settings = small("tile-settings", "settings", Icon::Settings, 0);
+
+    // The Windows 8 start screen: named groups side by side, like the
+    // React console's sidebar sections, scrolling sideways.
+    let scroll = nav.start_scroll.clone();
+    let hinge = START_INSET + f32::from(scroll.offset().x);
     let grid = tile_grid()
         .turnstile(true)
-        .tile(runs.on_click(to(|| Page::Runs { pivot: 1 })))
-        .tile(incidents.on_click(to(|| Page::Incidents { pivot: 0 })))
-        .tile(shipments.on_click(to(|| Page::Shipments { pivot: 0 })))
-        .tile(telemetry.on_click(to(|| Page::Telemetry { zone: 0 })))
-        .tile(
-            small("tile-strains", "strains", Icon::Dna, store.active_strains())
-                .on_click(to(|| Page::Strains)),
+        .hinge(hinge)
+        .group(
+            "floor",
+            [
+                runs.on_click(to(|| Page::Runs { pivot: 1 })),
+                telemetry.on_click(to(|| Page::Telemetry { zone: 0 })),
+                incidents.on_click(to(|| Page::Incidents { pivot: 0 })),
+                deck.on_click(to(|| Page::Deck { pivot: 0 })),
+            ],
         )
-        .tile(freezer.on_click(to(|| Page::Freezer)))
-        .tile(
-            small(
-                "tile-deck",
-                "deck",
-                Icon::Calendar,
-                store.deck_today().count(),
-            )
-            .on_click(to(|| Page::Deck { pivot: 0 })),
+        .group("biology", [strains.on_click(to(|| Page::Strains))])
+        .group(
+            "inventory",
+            [
+                shipments.on_click(to(|| Page::Shipments { pivot: 0 })),
+                freezer.on_click(to(|| Page::Freezer)),
+                reagents.on_click(to(|| Page::Reagents { pivot: 0 })),
+            ],
         )
-        .tile(
-            small(
-                "tile-people",
-                "people",
-                Icon::People,
-                store.active_members(),
-            )
-            .on_click(to(|| Page::People { pivot: 0 })),
-        )
-        .tile(reagents.on_click(to(|| Page::Reagents { pivot: 0 })))
-        .tile(
-            small("tile-settings", "settings", Icon::Settings, 0).on_click(to(|| Page::Settings)),
+        .group(
+            "org",
+            [
+                people.on_click(to(|| Page::People { pivot: 0 })),
+                settings.on_click(to(|| Page::Settings)),
+            ],
         );
 
+    let wheel = scroll.clone();
     PageView::new(
-        div().id("start").size_full().overflow_y_scroll().child(
-            div()
-                .flex()
-                .justify_center()
-                .pt(u(30.))
-                .pb(u(48.))
-                .child(grid),
-        ),
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .px(u(PAGE_MARGIN))
+                    .pb(u(28.))
+                    .child(text(TextStyle::Title1, "start").lowercase()),
+            )
+            .child(
+                div()
+                    .id("start")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_x_scroll()
+                    .track_scroll(&scroll)
+                    // A mouse wheel scrolls the start screen sideways.
+                    .on_scroll_wheel(move |e: &ScrollWheelEvent, window, _| {
+                        let delta = e.delta.pixel_delta(window.line_height());
+                        let step = if delta.x.abs() > delta.y.abs() { delta.x } else { delta.y };
+                        let max = wheel.max_offset().x;
+                        let x = (wheel.offset().x + step).clamp(-max, gpui::px(0.));
+                        wheel.set_offset(gpui::point(x, wheel.offset().y));
+                        window.refresh();
+                    })
+                    .child(div().flex().px(u(PAGE_MARGIN)).pb(u(48.)).child(grid).child(div().w(u(96.)))),
+            ),
     )
 }
+
+/// Distance from the window edge to the first group (the shell's gutter
+/// plus the page margin), for the turnstile hinge.
+const START_INSET: f32 = crate::app::LEFT_GUTTER + PAGE_MARGIN;

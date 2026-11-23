@@ -64,8 +64,8 @@ pub fn list(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
         .children(
             incidents
                 .iter()
-                .enumerate()
-                .map(|(ix, i)| nav.feather("incidents", ix, incident_item(i, nav, cx), cx)),
+                
+                .map(|i| incident_item(i, nav, cx)),
         );
     let body = pivot("incidents-pivot", STATUSES.map(|s| s.as_str()), selected)
         .title(APP)
@@ -165,10 +165,10 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
         "incidents",
         incident.code.clone(),
         scroll(format!("incident-{}", incident.id))
-            .child(nav.feather("incident", 0, summary, cx))
-            .child(nav.feather("incident", 1, facts, cx))
-            .children(linked.map(|l| nav.feather("incident", 2, l, cx)))
-            .child(nav.feather("incident", 3, timeline, cx)),
+            .child(summary)
+            .child(facts)
+            .children(linked)
+            .child(timeline),
     );
 
     let bar = app_bar("incident-bar");
@@ -260,7 +260,7 @@ fn save(app: &mut NoAtiv, window: &mut Window, cx: &mut Context<NoAtiv>) {
     }
 }
 
-pub fn form(form: &IncidentForm, store: &Store, nav: &Nav, cx: &App) -> PageView {
+pub fn form(form: &IncidentForm, store: &Store, nav: &Nav) -> PageView {
     let runs: Vec<String> = form
         .run_choices
         .iter()
@@ -270,32 +270,19 @@ pub fn form(form: &IncidentForm, store: &Store, nav: &Nav, cx: &App) -> PageView
 
     let fields = scroll("incident-form")
         .gap(u(18.))
-        .child(nav.feather("form", 0, text_box(&form.title).header("title"), cx))
+        .child(text_box(&form.title).header("title"))
         .child(
-            nav.feather(
-                "form",
-                1,
-                list_picker("area", AREAS.map(|a| a.as_str()), form.area)
+            list_picker("area", AREAS.map(|a| a.as_str()), form.area)
                     .header("area")
                     .on_select(edit(nav, |f, ix| f.area = ix)),
-                cx,
-            ),
         )
         .child(
-            nav.feather(
-                "form",
-                2,
-                list_picker("severity", SEVERITIES.map(|s| s.as_str()), form.severity)
+            list_picker("severity", SEVERITIES.map(|s| s.as_str()), form.severity)
                     .header("severity")
                     .on_select(edit(nav, |f, ix| f.severity = ix)),
-                cx,
-            ),
         )
         .child(
-            nav.feather(
-                "form",
-                3,
-                div()
+            div()
                     .flex()
                     .flex_col()
                     .gap(u(8.))
@@ -311,14 +298,9 @@ pub fn form(form: &IncidentForm, store: &Store, nav: &Nav, cx: &App) -> PageView
                                 .on_select(edit(nav, |f, ix| f.run = ix)),
                         )
                     }),
-                cx,
-            ),
         )
         .child(
-            nav.feather(
-                "form",
-                4,
-                div()
+            div()
                     .flex()
                     .flex_col()
                     .child(
@@ -331,19 +313,12 @@ pub fn form(form: &IncidentForm, store: &Store, nav: &Nav, cx: &App) -> PageView
                             .label("page the floor lead")
                             .on_change(edit(nav, |f, on| f.page_lead = on)),
                     ),
-                cx,
-            ),
         )
         .child(
-            nav.feather(
-                "form",
-                5,
-                button("save", "save")
+            button("save", "save")
                     .accent()
                     .full_width()
                     .on_click(nav.click(save)),
-                cx,
-            ),
         );
 
     PageView::new(titled("incidents", "new incident", fields)).app_bar(

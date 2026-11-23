@@ -337,19 +337,40 @@ fn default_front(size: TileSize, icon: Option<Icon>, count: Option<u32>, ink: Hs
 }
 
 /// The start screen: tiles packed by [`pack`] and positioned absolutely.
+/// On a phone that is one column of blocks; on the desktop (Windows 8) it
+/// is several named groups side by side, each packed on its own.
 #[derive(IntoElement)]
 pub struct TileGrid {
     id: ElementId,
     tiles: Vec<Tile>,
+    /// Group index per tile.
+    group_of: Vec<usize>,
+    /// Group titles; the first group is the implicit one `tile()` fills.
+    groups: Vec<Option<SharedString>>,
     columns: usize,
     unit: f32,
     gap: f32,
     turnstile: bool,
+    hinge: f32,
 }
 
 pub fn tile_grid() -> TileGrid {
-    TileGrid { id: "tile-grid".into(), tiles: Vec::new(), columns: 4, unit: TILE_UNIT, gap: TILE_GAP, turnstile: false }
+    TileGrid {
+        id: "tile-grid".into(),
+        tiles: Vec::new(),
+        group_of: Vec::new(),
+        groups: vec![None],
+        columns: 4,
+        unit: TILE_UNIT,
+        gap: TILE_GAP,
+        turnstile: false,
+        hinge: PAGE_MARGIN,
+    }
 }
+
+/// Space between groups, and the height of the group title row.
+pub const GROUP_GAP: f32 = 56.;
+pub const GROUP_HEADER: f32 = 44.;
 
 impl TileGrid {
     /// Needed only to tell two grids in the same view apart.
@@ -357,12 +378,31 @@ impl TileGrid {
         self.id = id.into();
         self
     }
+    /// Adds a tile to the current (last) group.
     pub fn tile(mut self, tile: Tile) -> Self {
+        self.group_of.push(self.groups.len() - 1);
         self.tiles.push(tile);
         self
     }
-    pub fn tiles(mut self, tiles: impl IntoIterator<Item = Tile>) -> Self {
-        self.tiles.extend(tiles);
+    pub fn tiles(self, tiles: impl IntoIterator<Item = Tile>) -> Self {
+        tiles.into_iter().fold(self, |g, t| g.tile(t))
+    }
+    /// Starts a new named group to the right of the previous one (the
+    /// Windows 8 start screen). Later `tile()` calls fill it.
+    pub fn group(mut self, title: impl Into<SharedString>, tiles: impl IntoIterator<Item = Tile>) -> Self {
+        let title = Some(title.into());
+        if self.tiles.is_empty() && self.groups.len() == 1 {
+            self.groups[0] = title;
+        } else {
+            self.groups.push(title);
+        }
+        self.tiles(tiles)
+    }
+    /// Distance from the turnstile's hinge (the screen's left edge) to the
+    /// grid's left edge, in design px. Defaults to the page margin; set it
+    /// when the grid sits further in or is scrolled.
+    pub fn hinge(mut self, distance: f32) -> Self {
+        self.hinge = distance;
         self
     }
     /// Grid width in small-tile units (4 on WP8 by default, 6 with the "show more tiles" setting).
@@ -384,9 +424,19 @@ impl TileGrid {
         self
     }
 
-    /// The width this grid occupies, for centring.
-    pub fn width(&self) -> f32 {
+    /// The width of one group, in design px.
+    pub fn group_width(&self) -> f32 {
         self.columns as f32 * self.unit + (self.columns.saturating_sub(1)) as f32 * self.gap
+    }
+
+    /// The width this grid occupies, for centring or scrolling.
+    pub fn width(&self) -> f32 {
+        let n = self.group_count() as f32;
+        n * self.group_width() + (n - 1.).max(0.) * GROUP_GAP
+    }
+
+    fn group_count(&self) -> usize {
+        self.group_of.iter().max().map_or(1, |g| g + 1)
     }
 }
 
@@ -429,13 +479,50 @@ struct Exit {
 
 impl RenderOnce for TileGrid {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let sizes: Vec<TileSize> = self.tiles.iter().map(|t| t.size).collect();
-        let positions = pack(&sizes, self.columns);
-        let rows = packed_rows(&sizes, &positions);
         let step = self.unit + self.gap;
         let width = self.width();
-        let height = rows as f32 * step - if rows > 0 { self.gap } else { 0. };
-        let (unit, gap) = (self.unit, self.gap);
+        let (unit, gap, hinge) = (self.unit, self.gap, self.hinge);
+        let group_count = self.group_count();
+        let titled = self.groups.iter().any(Option::is_some);
+        let top = if titled { GROUP_HEADER } else { 0. };
+        let group_x = |g: usize| g as f32 * (self.group_width() + GROUP_GAP);
+
+        // Pack each group on its own, then place it in the row of groups.
+        // `positions` are in grid units across the whole row (for the exit
+        // wave's reading order); `origins` are design px.
+        let mut positions = vec![(0, 0); self.tiles.len()];
+        let mut origins = vec![(0., 0.); self.tiles.len()];
+        let mut rows = 0;
+        for g in 0..group_count {
+            let members: Vec<usize> = (0..self.tiles.len()).filter(|&i| self.group_of[i] == g).collect();
+            let sizes: Vec<TileSize> = members.iter().map(|&i| self.tiles[i].size).collect();
+            let packed = pack(&sizes, self.columns);
+            rows = rows.max(packed_rows(&sizes, &packed));
+            for (&i, &(c, r)) in members.iter().zip(&packed) {
+                positions[i] = (g * (self.columns + 1) + c, r);
+                origins[i] = (group_x(g) + c as f32 * step, top + r as f32 * step);
+            }
+        }
+        let height = top + rows as f32 * step - if rows > 0 { self.gap } else { 0. };
+        let headers: Vec<AnyElement> = self
+            .groups
+            .iter()
+            .enumerate()
+            .filter_map(|(g, title)| {
+                let title = title.clone()?;
+                Some(
+                    div()
+                        .absolute()
+                        .left(u(group_x(g)))
+                        .top_0()
+                        .text_size(u(size::MEDIUM_LARGE))
+                        .font_weight(crate::theme::SEMILIGHT)
+                        .text_color(Theme::palette(cx).foreground)
+                        .child(SharedString::from(title.to_lowercase()))
+                        .into_any_element(),
+                )
+            })
+            .collect();
 
         let reduced = Theme::get(cx).reduced_motion;
         let exit = self
@@ -453,7 +540,7 @@ impl RenderOnce for TileGrid {
             Vec::new()
         };
 
-        let tiles = self.tiles.into_iter().zip(positions).enumerate().map(|(ix, (mut t, (c, r)))| {
+        let tiles = self.tiles.into_iter().zip(origins).enumerate().map(|(ix, (mut t, (x, y)))| {
             // Route the click through the exit: animate first, launch after.
             if let (Some(exit), Some(launch)) = (exit.clone(), t.on_click.take()) {
                 let total = totals[ix];
@@ -491,7 +578,6 @@ impl RenderOnce for TileGrid {
                 }));
             }
 
-            let (x, y) = (c as f32 * step, r as f32 * step);
             let (tw, th) = t.size.pixels(unit, gap);
             let tile = t.metrics(unit, gap);
             match (&schedule, leaving) {
@@ -510,7 +596,7 @@ impl RenderOnce for TileGrid {
                     // scaling) and is clipped to its projected width.
                     let project = move |phase: usize, t: f32| {
                         let t = if delayed && phase == 0 { 0. } else { t };
-                        let r = turn(x + PAGE_MARGIN, tw, 90. * t);
+                        let r = turn(x + hinge, tw, 90. * t);
                         let k = (r.scale_left + r.scale_right) / 2.;
                         (r, k, th * k)
                     };
@@ -526,7 +612,7 @@ impl RenderOnce for TileGrid {
                         .child(body)
                         .with_animations(id, animations, move |el, phase, t| {
                             let (r, _, h) = project(phase, t);
-                            el.left(u(r.left - PAGE_MARGIN))
+                            el.left(u(r.left - hinge))
                                 .top(u(y + (th - h) / 2.))
                                 .w(u(r.width))
                                 .h(u(h))
@@ -538,7 +624,7 @@ impl RenderOnce for TileGrid {
             }
         });
 
-        div().relative().flex_none().w(u(width)).h(u(height)).children(tiles.collect::<Vec<_>>())
+        div().relative().flex_none().w(u(width)).h(u(height)).children(headers).children(tiles.collect::<Vec<_>>())
     }
 }
 
@@ -610,6 +696,18 @@ mod tests {
             }
         }
         assert_eq!(total, delays[tapped] + EXIT_TILE);
+    }
+
+    #[test]
+    fn groups_sit_side_by_side_and_each_packs_alone() {
+        let g = tile_grid()
+            .group("floor", [tile("a", Medium), tile("b", Small)])
+            .group("biology", [tile("c", Wide)]);
+        assert_eq!(g.group_count(), 2);
+        assert_eq!(g.group_of, vec![0, 0, 1]);
+        assert_eq!(g.groups.len(), 2, "the first group takes the implicit slot");
+        assert_eq!(g.width(), 2. * g.group_width() + GROUP_GAP);
+        assert_eq!(tile_grid().tile(tile("x", Small)).width(), tile_grid().group_width());
     }
 
     #[test]

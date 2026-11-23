@@ -40,10 +40,7 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
     let body = scroll("settings")
         .gap(u(14.))
         .child(
-            nav.feather(
-                "settings",
-                0,
-                list_picker(
+            list_picker(
                     "background",
                     [Mode::Dark.label(), Mode::Light.label()],
                     usize::from(theme.mode == Mode::Light),
@@ -52,38 +49,23 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
                 .on_select(nav.on(|_, ix: usize, _, cx| {
                     Theme::set_mode(if ix == 0 { Mode::Dark } else { Mode::Light }, cx)
                 })),
-                cx,
-            ),
         )
         .child(
-            nav.feather(
-                "settings",
-                1,
-                div()
+            div()
                     .flex()
                     .flex_col()
                     .gap(u(8.))
                     .child(subtle("accent colour", cx))
                     .child(accent_grid(nav, cx))
                     .child(text(TextStyle::Accent, theme.accent.name())),
-                cx,
-            ),
         )
         .child(
-            nav.feather(
-                "settings",
-                2,
-                toggle_switch("reduced-motion", theme.reduced_motion)
+            toggle_switch("reduced-motion", theme.reduced_motion)
                     .header("reduce motion")
                     .on_change(nav.on(|_, on: bool, _, cx| Theme::set_reduced_motion(on, cx))),
-                cx,
-            ),
         )
         .child(
-            nav.feather(
-                "settings",
-                3,
-                div()
+            div()
                     .flex()
                     .flex_col()
                     .child(
@@ -104,14 +86,9 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
                         TextStyle::Large,
                         format!("{} days", store.expiry_window),
                     )),
-                cx,
-            ),
         )
         .child(
-            nav.feather(
-                "settings",
-                4,
-                div()
+            div()
                     .flex()
                     .flex_col()
                     .child(heading("about", cx))
@@ -126,8 +103,6 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
                         ),
                         cx,
                     )),
-                cx,
-            ),
         );
     PageView::new(titled("settings", "settings", body))
 }

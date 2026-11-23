@@ -84,8 +84,8 @@ pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
     let pane = scroll(format!("shipments-{selected}")).children(
         shipments
             .into_iter()
-            .enumerate()
-            .map(|(ix, s)| nav.feather("shipments", ix, shipment_row(s, cx), cx)),
+            
+            .map(|s| shipment_row(s, cx)),
     );
     PageView::new(
         pivot("shipments-pivot", ["en route", "delivered"], selected)

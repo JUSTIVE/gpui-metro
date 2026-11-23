@@ -84,8 +84,8 @@ pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
         ))
         .children(
             lots.into_iter()
-                .enumerate()
-                .map(|(ix, (lot, state))| nav.feather("lots", ix, lot_row(lot, state, cx), cx)),
+                
+                .map(|(lot, state)| lot_row(lot, state, cx)),
         );
     PageView::new(
         pivot("reagents-pivot", ["attention", "all lots"], selected)
