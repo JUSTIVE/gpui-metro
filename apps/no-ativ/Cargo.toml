@@ -9,3 +9,6 @@ publish = false
 gpui.workspace = true
 gpui-metro.workspace = true
 anyhow.workspace = true
+
+[dev-dependencies]
+gpui = { version = "0.2.2", default-features = false, features = ["font-kit", "runtime_shaders", "test-support"] }
