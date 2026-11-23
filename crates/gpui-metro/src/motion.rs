@@ -12,7 +12,8 @@
 //! Only Metro's own motions live here, after the Windows Phone Toolkit:
 //!
 //! * **Turnstile** ([`enter_div`]): pages swing about the left edge;
-//!   forward-in from −80°, back-in from 50°, 350 ms, exponential ease-out
+//!   in from edge-on (the Toolkit's −80° / 50°, opened up so nothing pops),
+//!   350 ms, exponential ease-out
 //!   (exponent 6). Tiles turnstile out to 90° on an ease-in.
 //! * **Turnstile feather** ([`enter`] with an index): items swing in one
 //!   after another, top first.
@@ -64,10 +65,13 @@ pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
 pub const ENTER: Duration = Duration::from_millis(350);
 /// Per-item stagger in a turnstile feather.
 pub const FEATHER: Duration = Duration::from_millis(40);
-/// Where a forward entrance starts its swing (right edge toward the viewer).
-pub const FORWARD_IN_DEG: f32 = -80.;
-/// Where a back entrance starts its swing (right edge away from the viewer).
-pub const BACKWARD_IN_DEG: f32 = 50.;
+/// Where a forward entrance starts its swing: edge-on, right edge toward
+/// the viewer. (The Toolkit used −80°, but through a perspective camera that
+/// is already a third of the page wide, so the page popped in; from edge-on
+/// it opens smoothly. The ease-out puts it past −80° within a few frames.)
+pub const FORWARD_IN_DEG: f32 = -90.;
+/// Where a back entrance starts its swing: edge-on, right edge away.
+pub const BACKWARD_IN_DEG: f32 = 90.;
 /// Camera distance for the projection, in px (Silverlight's `PlaneProjection`).
 pub const PERSPECTIVE: f32 = 1000.;
 /// Width assumed for page content when projecting it (a 480 px page minus margins).
@@ -76,9 +80,9 @@ pub const PAGE_CONTENT_WIDTH: f32 = 432.;
 /// Which way navigation went; decides where a turnstile swings in from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
-    /// Forward navigation: swings in from −80°.
+    /// Forward navigation: swings in with its right edge toward the viewer.
     Forward,
-    /// Back navigation: swings in from 50°.
+    /// Back navigation: swings in with its right edge away from the viewer.
     Backward,
 }
 
@@ -147,10 +151,11 @@ pub fn enter_div(
 
 /// How long a page takes to turnstile out.
 pub const EXIT: Duration = Duration::from_millis(250);
-/// Where a forward exit swings to (away from the viewer).
-pub const FORWARD_OUT_DEG: f32 = 50.;
-/// Where a back exit swings to (toward the viewer).
-pub const BACKWARD_OUT_DEG: f32 = -80.;
+/// Where a forward exit swings to: edge-on, away from the viewer, so the page
+/// is gone when it ends instead of vanishing half-way open.
+pub const FORWARD_OUT_DEG: f32 = 90.;
+/// Where a back exit swings to: edge-on, toward the viewer.
+pub const BACKWARD_OUT_DEG: f32 = -90.;
 
 /// Turnstile-out: the page swings away about the left edge in [`EXIT`] on
 /// an ease-in, and is hidden once it has gone. Render it in place of the
@@ -231,6 +236,78 @@ fn turn_div(
             };
             el.ml(u(offset)).opacity(if hidden { 0. } else { 1. })
         })
+        .into_any_element()
+}
+
+/// A page turnstile driven by the caller's clock instead of an animation
+/// element, so the page keeps one element tree (and its scroll positions
+/// and component state) from the moment it swings in until it swings out.
+/// Start one, render with [`Turnstile::frame`] every frame while it runs, and
+/// call `window.request_animation_frame()` until [`Turnstile::done`].
+#[derive(Clone, Copy, Debug)]
+pub struct Turnstile {
+    start: std::time::Instant,
+    degrees: (f32, f32),
+    duration: Duration,
+    entering: bool,
+}
+
+impl Turnstile {
+    /// The page swinging in (350 ms, exponential ease-out).
+    pub fn enter(direction: Direction) -> Self {
+        let from = if direction == Direction::Forward { FORWARD_IN_DEG } else { BACKWARD_IN_DEG };
+        Self { start: std::time::Instant::now(), degrees: (from, 0.), duration: ENTER, entering: true }
+    }
+
+    /// The page swinging out (250 ms, exponential ease-in).
+    pub fn exit(direction: Direction) -> Self {
+        let to = if direction == Direction::Forward { FORWARD_OUT_DEG } else { BACKWARD_OUT_DEG };
+        Self { start: std::time::Instant::now(), degrees: (0., to), duration: EXIT, entering: false }
+    }
+
+    fn progress(&self) -> f32 {
+        (self.start.elapsed().as_secs_f32() / self.duration.as_secs_f32()).clamp(0., 1.)
+    }
+
+    pub fn done(&self) -> bool {
+        self.progress() >= 1.
+    }
+
+    pub fn is_exit(&self) -> bool {
+        !self.entering
+    }
+
+    /// The angle now.
+    pub fn degrees(&self) -> f32 {
+        let t = self.progress();
+        let e = if self.entering { ease_out_exp6(t) } else { ease_in_exp6(t) };
+        lerp(self.degrees.0, self.degrees.1, e)
+    }
+
+    /// `wrapper` at the current angle. A finished exit renders nothing visible.
+    pub fn frame(&self, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
+        if self.is_exit() && self.done() {
+            return turned(90., wrapper, cx);
+        }
+        turned(self.degrees(), wrapper, cx)
+    }
+}
+
+/// `wrapper` (a page filling its parent) turned by `degrees` about the
+/// hinge: clipped to its projected span at full size. At 0° it renders
+/// exactly as itself, in the same element structure as when turned.
+pub fn turned(degrees: f32, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
+    let metrics = cx.try_global::<Theme>().map_or((PAGE_MARGIN, PAGE_CONTENT_WIDTH), |t| t.page_metrics);
+    let (f, offset) = if reduced(cx) { (1., 0.) } else { page_turn(degrees, metrics) };
+    let f_clamped = f.max(0.02);
+    div()
+        .relative()
+        .size_full()
+        .overflow_hidden()
+        .w(relative(f_clamped))
+        .ml(u(offset))
+        .opacity(if f < 0.04 { 0. } else { 1. })
+        .child(div().relative().h_full().w(relative(1. / f_clamped)).child(wrapper.size_full()))
         .into_any_element()
 }
 
@@ -417,6 +494,17 @@ mod tests {
         assert!((ease_in_out_cubic(0.5) - 0.5).abs() < 1e-6);
         assert!(ease_out_exp6(0.) == 0. && (ease_out_exp6(1.) - 1.).abs() < 1e-6);
         assert!(ease_in_exp6(0.2) < 0.1, "leaving starts slow");
+    }
+
+    #[test]
+    fn turns_start_and_end_edge_on_so_nothing_pops() {
+        let m = (PAGE_MARGIN, PAGE_CONTENT_WIDTH);
+        for deg in [FORWARD_IN_DEG, BACKWARD_IN_DEG, FORWARD_OUT_DEG, BACKWARD_OUT_DEG] {
+            assert!(page_turn(deg, m).0 < 0.01, "{deg}° should be edge-on");
+        }
+        assert!((page_turn(0., m).0 - 1.).abs() < 1e-4);
+        // An entrance has already opened past the Toolkit's −80° early on.
+        assert!(lerp(FORWARD_IN_DEG, 0., ease_out_exp6(0.05)) > -80.);
     }
 
     #[test]

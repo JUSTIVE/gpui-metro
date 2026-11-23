@@ -72,8 +72,9 @@ GPUI can't transform boxes or text, so Metro's 3D turnstile is *projected*:
 an element turned about the screen's left edge is drawn at the span a
 perspective camera would see (`motion::turn`). Pages are clipped to that
 span at full size (uniform scaling would read as a zoom). Tiles shrink by the perspective
-factor as they turn away. Timings follow the WP Toolkit: forward-in from
-−80° and back-in from 50°, both 350 ms on an exponential ease-out
+factor as they turn away. Timings follow the WP Toolkit: pages swing in from
+edge-on (the Toolkit's −80° and 50°, opened up so nothing pops), 350 ms on an
+exponential ease-out
 (exponent 6), with items feathered 40 ms apart. Tiles turnstile out to 90° on
 an ease-in, in reading order, with the tapped tile last.
 

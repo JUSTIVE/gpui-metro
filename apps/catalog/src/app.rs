@@ -34,8 +34,10 @@ pub struct Catalog {
     pub page: Page,
     /// The page swinging out while `page` waits to come in.
     leaving: Option<Page>,
-    /// Bumps on every page change, so each entrance and exit plays afresh.
-    visits: usize,
+    /// The page turn in progress, driven by its own clock so the page keeps
+    /// one element tree (scroll, component state) from entrance to exit.
+    turn: Option<motion::Turnstile>,
+    /// A start screen's exit (its tiles' wave) ends on this timer.
     _leave: Option<Task<()>>,
     _looper: Task<()>,
     pub search: Entity<TextInput>,
@@ -89,7 +91,7 @@ impl Catalog {
             page,
             leaving: None,
             _looper: looper,
-            visits: 0,
+            turn: Some(motion::Turnstile::enter(Direction::Forward)),
             _leave: None,
             search,
             query: SharedString::default(),
@@ -105,42 +107,66 @@ impl Catalog {
         if page == self.page {
             return;
         }
-        self.visits += 1;
         if Theme::get(cx).reduced_motion {
             self.page = page;
             cx.notify();
             return;
         }
+        // Mid-transition, the page on screen is whichever is leaving.
         let old = self.leaving.unwrap_or(self.page);
-        self.leaving = Some(old);
         self.page = page;
-        let exit = if is_start_screen(old) { GRID_EXIT } else { motion::EXIT };
-        self._leave = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(exit).await;
-            this.update(cx, |this, cx| {
-                this.leaving = None;
-                this.visits += 1;
-                cx.notify();
-            })
-            .ok();
-        }));
+        if is_start_screen(old) {
+            // The tiles swing away by themselves; wait for the wave.
+            self.leaving = Some(old);
+            self.turn = None;
+            self._leave = Some(cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(GRID_EXIT).await;
+                this.update(cx, |this, cx| {
+                    this.leaving = None;
+                    this.turn = (!is_start_screen(this.page)).then(|| motion::Turnstile::enter(Direction::Forward));
+                    cx.notify();
+                })
+                .ok();
+            }));
+        } else if self.leaving.is_none() {
+            self.leaving = Some(old);
+            self.turn = Some(motion::Turnstile::exit(Direction::Forward));
+        }
         cx.notify();
+    }
+
+    /// Advances the page turn: an exit hands over to the new page's
+    /// entrance, an entrance settles. Keeps frames coming while it runs.
+    fn step_turn(&mut self, window: &mut Window) {
+        let Some(turn) = self.turn else { return };
+        if !turn.done() {
+            window.request_animation_frame();
+            return;
+        }
+        if turn.is_exit() {
+            self.leaving = None;
+            self.turn = (!is_start_screen(self.page)).then(|| motion::Turnstile::enter(Direction::Forward));
+            window.request_animation_frame();
+        } else {
+            self.turn = None;
+        }
     }
 
     fn main_area(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Theme::palette(cx);
+        self.step_turn(window);
         let page = self.page;
         // While the old page leaves, the phone still shows it.
         let shown = self.leaving.unwrap_or(page);
         self.demo.leaving = self.leaving.is_some();
         let mut demo = demos::render(shown, &self.demo, window, cx);
         if !is_start_screen(shown) {
-            let key = ("phone-page", self.visits);
+            // Always the same structure, turned or at rest, so the page's
+            // element tree survives its own entrance and exit.
             let body = div().size_full().child(demo.body);
-            demo.body = if self.leaving.is_some() {
-                motion::exit_div(key, Direction::Forward, body, cx)
-            } else {
-                motion::enter_div(key, Direction::Forward, 0, body, cx)
+            demo.body = match &self.turn {
+                Some(turn) => turn.frame(body, cx),
+                None => motion::turned(0., body, cx),
             };
         }
         let screen = phone::frame(&self.demo, demo, cx);

@@ -488,8 +488,9 @@ pub fn exit_schedule(positions: &[(usize, usize)], tapped: usize) -> (Vec<Durati
     (delays, tapped_delay + EXIT_TILE)
 }
 
-/// Where a tile turns in from when the start screen appears.
-const ENTER_FROM_DEG: f32 = 60.;
+/// Where a tile turns in from when the start screen appears: edge-on, so it
+/// opens from nothing rather than popping in half-turned.
+const ENTER_FROM_DEG: f32 = 90.;
 /// Gap between neighbouring tiles as they turn in.
 const ENTER_STEP: Duration = Duration::from_millis(20);
 const ENTER_WAVE_MAX: Duration = Duration::from_millis(240);
@@ -692,7 +693,7 @@ impl RenderOnce for TileGrid {
                     Animation::new(EXIT_TILE).with_easing(ease_in_exp6),
                     (0., 90.),
                 ),
-                // Turnstile-in: each tile swings open from 60°, feathered in
+                // Turnstile-in: each tile swings open from edge-on, feathered in
                 // reading order. Plays whenever the grid appears (or `replay`
                 // changes).
                 _ if turnstile && !reduced => cell.swing(
