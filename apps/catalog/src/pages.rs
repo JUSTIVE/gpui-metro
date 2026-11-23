@@ -187,10 +187,10 @@ impl Page {
                 "TileGrid packs tiles the way the start screen did: 2×2 blocks, medium and larger tiles aligned to block corners, small tiles filling quadrants first-fit. Flip the switch for the six-column \"show more tiles\" layout; the same tiles re-pack at a smaller unit. With turnstile on, tapping people or outlook swings the tiles out (the tapped one last) and then opens a panorama or a pivot."
             }
             Page::Pivot => {
-                "A pivot shows one pane under a row of huge lower-case headers. The selected header always leads and the rest wrap around it, dimmed. Tap a header, Shift + scroll the wheel, or swipe on a trackpad; the pane turnstiles in from the direction you moved."
+                "A pivot shows one pane under a row of huge lower-case headers. The selected header always leads and the rest wrap around it, dimmed. Tap a header, Shift + scroll the wheel, or swipe on a trackpad; the old pane slips away and the new one slides in from the direction you moved, its lines fanning in one after another (sender, then subject, then preview)."
             }
             Page::Panorama => {
-                "The hub: one long canvas behind a title far wider than the screen. Sections snap one at a time with the next one peeking in from the right, and the title drifts slower than the content for parallax. Tap the peeking section, Shift + scroll the wheel, or swipe to move."
+                "The hub: one long canvas behind a title far wider than the screen. Sections snap one at a time with the next one peeking in from the right, and the title drifts slower than the content for parallax. It wraps around: past the last section comes the first, while the title runs back to its start. Opening the hub, the sections fly in from the right with the title behind them. Tap the peeking section, Shift + scroll the wheel, or swipe to move."
             }
             Page::AppBar => {
                 "Up to four round glyph buttons along the bottom edge and the ··· that expands the bar to reveal labels and lower-case menu items. Minimized mode shows only the ··· strip until opened. Expansion state belongs to the bar; actions collapse it."

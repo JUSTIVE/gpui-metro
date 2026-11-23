@@ -117,8 +117,14 @@ pub fn turn(offset: f32, width: f32, degrees: f32) -> Turn {
 
 /// Fraction of its width, and px offset of its left edge, that page content
 /// `inset` px from the hinge and `width` wide shows at `degrees`.
+///
+/// A page turned toward the viewer is drawn as if turned as far away. Toward
+/// the viewer the far edge magnifies past the screen, which a clip at full
+/// size can't show: the span was already full width two frames into a
+/// 350 ms entrance from −90°, so the page popped in. Mirrored, it opens from
+/// a sliver at the hinge, the way the start screen's tiles do.
 fn page_turn(degrees: f32, (inset, width): (f32, f32)) -> (f32, f32) {
-    let t = turn(inset, width, degrees);
+    let t = turn(inset, width, degrees.abs());
     ((t.width / width.max(1.)).clamp(0., 1.), t.left - inset)
 }
 
@@ -204,7 +210,10 @@ fn turn_div(
     };
     {
         let (src, dst) = (wrapper.style(), clip.style());
-        fills_height = src.size.height.is_some();
+        // Sized by height, or grown by flex (`flex_1`): either way the
+        // content must fill the clip, or a `size_full` page inside it
+        // collapses to nothing.
+        fills_height = src.size.height.is_some() || src.flex_grow.is_some_and(|g| g > 0.);
         dst.size.height = src.size.height;
         dst.min_size.height = src.min_size.height;
         dst.flex_grow = src.flex_grow;
@@ -317,19 +326,201 @@ pub fn turned(degrees: f32, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
         .into_any_element()
 }
 
-/// Pivot-style entrance: the whole pane slides in from the side it came
-/// from, without fading, decelerating hard (500 ms, exponent 6).
-pub fn slide_in(id: impl Into<ElementId>, direction: Direction, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
+/// How long a pivot pane takes to slide in.
+pub const PANE_IN: Duration = Duration::from_millis(400);
+/// How far (design px) a pivot pane starts from where it settles.
+pub const PANE_SHIFT: f32 = 110.;
+/// Extra distance per line for the pivot's line-by-line slide (the WP
+/// Toolkit's `SlideInEffect`): line 1 starts this much further out than
+/// line 0, line 2 twice as far, and so on. All arrive together on the same
+/// ease, so the further lines trail and the pane fans in.
+pub const LINE_LEAD: f32 = 70.;
+/// How long the outgoing pivot pane takes to slip away.
+pub const PANE_OUT: Duration = Duration::from_millis(130);
+
+/// A pane slide in progress, read by [`slide_line`] while the pane lays out.
+#[derive(Clone)]
+pub struct LineSlide {
+    key: SharedString,
+    /// +1: from the right (forward); −1: from the left.
+    sign: f32,
+    delay: Duration,
+}
+
+thread_local! {
+    static LINE_SLIDES: std::cell::RefCell<Vec<LineSlide>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Pivot-style entrance: the pane slides in from the side it came from,
+/// without fading, decelerating hard; lines inside it marked with
+/// [`slide_line`] (list items mark theirs) trail it by line, so the pane fans
+/// in. `delay` holds it hidden first (while the old pane leaves).
+pub fn slide_in_after(
+    id: impl Into<ElementId>,
+    direction: Direction,
+    delay: Duration,
+    wrapper: gpui::Div,
+    cx: &App,
+) -> gpui::AnyElement {
     if reduced(cx) {
         return wrapper.into_any_element();
     }
+    let id = id.into();
     let sign = if direction == Direction::Forward { 1. } else { -1. };
-    wrapper
+    let slide = LineSlide { key: SharedString::from(format!("{id}")), sign, delay };
+    let mut animations = Vec::with_capacity(2);
+    if !delay.is_zero() {
+        animations.push(Animation::new(delay));
+    }
+    let delayed = animations.len() == 1;
+    animations.push(Animation::new(PANE_IN).with_easing(ease_out_exp6));
+    LineScope { div: div().size_full(), slide: Some(slide) }
+        .child(wrapper)
         .relative()
-        .with_animation(id, Animation::new(Duration::from_millis(500)).with_easing(ease_out_exp6), move |el, t| {
-            el.left(relative(sign * 0.6 * (1. - t)))
+        .with_animations(id, animations, move |el, phase, t| {
+            if delayed && phase == 0 {
+                el.left(u(sign * PANE_SHIFT)).opacity(0.)
+            } else {
+                el.left(u(sign * PANE_SHIFT * (1. - t))).opacity(1.)
+            }
         })
         .into_any_element()
+}
+
+/// [`slide_in_after`] with no wait.
+pub fn slide_in(id: impl Into<ElementId>, direction: Direction, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
+    slide_in_after(id, direction, Duration::ZERO, wrapper, cx)
+}
+
+/// The pane leaving as another slides in: it slips a little the other way
+/// and fades, quickly, on an ease-in.
+pub fn slide_out(id: impl Into<ElementId>, direction: Direction, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
+    if reduced(cx) {
+        return div().into_any_element();
+    }
+    let sign = if direction == Direction::Forward { -1. } else { 1. };
+    wrapper
+        .relative()
+        // Linear fade, gently accelerating slip: an exponential ease-in sat
+        // still for most of so short a move, then the pane vanished.
+        .with_animation(id, Animation::new(PANE_OUT), move |el, t| el.left(u(sign * PANE_SHIFT * 0.5 * t * t)).opacity(1. - t))
+        .into_any_element()
+}
+
+/// One line of content (`line` 0 = the first) that trails a pane sliding in
+/// around it by [`LINE_LEAD`] per line. Outside a sliding pane it renders
+/// as is. `id` must be unique among its siblings' lines.
+pub fn slide_line(id: impl Into<ElementId>, line: usize, el: gpui::Div) -> gpui::AnyElement {
+    let Some(slide) = LINE_SLIDES.with(|s| s.borrow().last().cloned()) else {
+        return el.into_any_element();
+    };
+    if line == 0 {
+        return el.into_any_element();
+    }
+    let lead = slide.sign * LINE_LEAD * line as f32;
+    let mut animations = Vec::with_capacity(2);
+    if !slide.delay.is_zero() {
+        animations.push(Animation::new(slide.delay));
+    }
+    let delayed = animations.len() == 1;
+    animations.push(Animation::new(PANE_IN).with_easing(ease_out_exp6));
+    let id: ElementId = id.into();
+    el.relative()
+        .with_animations(
+            ElementId::from((SharedString::from(format!("{}-{id}", slide.key)), line)),
+            animations,
+            move |el, phase, t| el.left(u(lead * if delayed && phase == 0 { 1. } else { 1. - t })),
+        )
+        .into_any_element()
+}
+
+/// A div that makes a [`LineSlide`] current while its children lay out.
+struct LineScope {
+    div: gpui::Div,
+    slide: Option<LineSlide>,
+}
+
+impl LineScope {
+    fn scoped<R>(&self, f: impl FnOnce() -> R) -> R {
+        let Some(slide) = self.slide.clone() else { return f() };
+        LINE_SLIDES.with(|s| s.borrow_mut().push(slide));
+        let r = f();
+        LINE_SLIDES.with(|s| s.borrow_mut().pop());
+        r
+    }
+}
+
+impl Styled for LineScope {
+    fn style(&mut self) -> &mut gpui::StyleRefinement {
+        self.div.style()
+    }
+}
+
+impl ParentElement for LineScope {
+    fn extend(&mut self, elements: impl IntoIterator<Item = gpui::AnyElement>) {
+        self.div.extend(elements)
+    }
+}
+
+impl gpui::Element for LineScope {
+    type RequestLayoutState = gpui::DivFrameState;
+    type PrepaintState = Option<gpui::Hitbox>;
+
+    fn id(&self) -> Option<ElementId> {
+        gpui::Element::id(&self.div)
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        gpui::Element::source_location(&self.div)
+    }
+
+    fn request_layout(
+        &mut self,
+        id: Option<&gpui::GlobalElementId>,
+        inspector_id: Option<&gpui::InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (gpui::LayoutId, Self::RequestLayoutState) {
+        // Children render (and their animations sample) during layout.
+        let slide = self.slide.take();
+        let scope = LineScope { div: div(), slide };
+        let r = scope.scoped(|| self.div.request_layout(id, inspector_id, window, cx));
+        self.slide = scope.slide;
+        r
+    }
+
+    fn prepaint(
+        &mut self,
+        id: Option<&gpui::GlobalElementId>,
+        inspector_id: Option<&gpui::InspectorElementId>,
+        bounds: gpui::Bounds<gpui::Pixels>,
+        request_layout: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        self.div.prepaint(id, inspector_id, bounds, request_layout, window, cx)
+    }
+
+    fn paint(
+        &mut self,
+        id: Option<&gpui::GlobalElementId>,
+        inspector_id: Option<&gpui::InspectorElementId>,
+        bounds: gpui::Bounds<gpui::Pixels>,
+        request_layout: &mut Self::RequestLayoutState,
+        prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.div.paint(id, inspector_id, bounds, request_layout, prepaint, window, cx)
+    }
+}
+
+impl IntoElement for LineScope {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
 }
 
 /// Where a swivel starts: the pop-up is turned this far about its
@@ -511,6 +702,17 @@ mod tests {
         assert!((page_turn(0., m).0 - 1.).abs() < 1e-4);
         // An entrance has already opened past the Toolkit's −80° early on.
         assert!(lerp(FORWARD_IN_DEG, 0., ease_out_exp6(0.05)) > -80.);
+    }
+
+    #[test]
+    fn a_page_entrance_opens_over_many_frames() {
+        let m = (PAGE_MARGIN, PAGE_CONTENT_WIDTH);
+        let frame = 1. / 60. / ENTER.as_secs_f32();
+        for from in [FORWARD_IN_DEG, BACKWARD_IN_DEG] {
+            // Two frames in, still well short of full width (it used to be full).
+            let f = page_turn(lerp(from, 0., ease_out_exp6(2. * frame)), m).0;
+            assert!(f < 0.6, "{from}°: {f}");
+        }
     }
 
     #[test]

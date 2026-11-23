@@ -3,6 +3,7 @@
 //! wrap around, dimmed. Tap a header, Shift + wheel, or swipe sideways to move.
 
 use std::rc::Rc;
+use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement,
@@ -14,7 +15,7 @@ use crate::theme::u;
 use crate::{
     Theme, TextStyle,
     chrome::PAGE_MARGIN,
-    motion::{Direction, ease_out_exp6, generation_id, slide_in, track},
+    motion::{Direction, PANE_OUT, ease_out_exp6, generation_id, slide_in_after, slide_out, track},
     pager::{self, Pager},
     text,
     theme::{LIGHT, size},
@@ -29,7 +30,26 @@ pub struct Pivot {
     headers: Vec<SharedString>,
     selected: usize,
     content: Option<AnyElement>,
+    panes: Option<Panes>,
     on_select: Option<SelectHandler>,
+}
+
+/// Builds the pane for a header index.
+pub type PaneBuilder = Rc<dyn Fn(usize, &mut Window, &mut App) -> AnyElement>;
+
+/// Every header's pane, by builder or built up front.
+enum Panes {
+    Build(PaneBuilder),
+    All(Vec<Option<AnyElement>>),
+}
+
+impl Panes {
+    fn take(&mut self, ix: usize, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+        match self {
+            Panes::Build(build) => Some(build(ix, window, cx)),
+            Panes::All(panes) => panes.get_mut(ix).and_then(Option::take),
+        }
+    }
 }
 
 /// `pivot(id, ["all", "live", "harvested"], selected).child(pane_for(selected))`
@@ -40,7 +60,7 @@ pub fn pivot<S: Into<SharedString>>(
 ) -> Pivot {
     let headers: Vec<SharedString> = headers.into_iter().map(Into::into).collect();
     let selected = selected.min(headers.len().saturating_sub(1));
-    Pivot { id: id.into(), title: None, headers, selected, content: None, on_select: None }
+    Pivot { id: id.into(), title: None, headers, selected, content: None, panes: None, on_select: None }
 }
 
 impl Pivot {
@@ -49,9 +69,24 @@ impl Pivot {
         self.title = Some(title.into());
         self
     }
-    /// The pane for the selected header.
+    /// The pane for the selected header. Prefer [`Pivot::panes`]: with
+    /// only the selected pane, the old one can't be shown leaving.
     pub fn child(mut self, content: impl IntoElement) -> Self {
         self.content = Some(content.into_any_element());
+        self
+    }
+    /// Builds any header's pane, so a change can show the old pane slipping
+    /// away before the new one slides in. Overrides [`Pivot::child`].
+    pub fn panes<E: IntoElement>(mut self, f: impl Fn(usize, &mut Window, &mut App) -> E + 'static) -> Self {
+        self.panes = Some(Panes::Build(Rc::new(move |ix, w, cx| f(ix, w, cx).into_any_element())));
+        self
+    }
+    /// Every header's pane, in header order, for content built from borrowed
+    /// state (where [`Pivot::panes`] can't keep a builder). Only the selected
+    /// pane, and the old one while it leaves, are rendered; the rest are
+    /// dropped. Overrides [`Pivot::child`].
+    pub fn all_panes<E: IntoElement>(mut self, panes: impl IntoIterator<Item = E>) -> Self {
+        self.panes = Some(Panes::All(panes.into_iter().map(|p| Some(p.into_any_element())).collect()));
         self
     }
     pub fn on_select(mut self, f: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
@@ -64,6 +99,12 @@ const HEADER_SIZE: f32 = size::HUGE * 0.86;
 const HEADER_GAP: f32 = 22.;
 /// Header glide and pane slide (WP pivot).
 const GLIDE: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// When the selection last changed, so the old pane is drawn only while it leaves.
+struct Changed {
+    generation: usize,
+    at: std::time::Instant,
+}
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
@@ -176,7 +217,50 @@ impl RenderOnce for Pivot {
         };
 
         let on_select = self.on_select.clone();
-        let content = self.content.unwrap_or_else(|| div().into_any_element());
+        let changed = window.use_keyed_state(
+            ElementId::from(SharedString::from(format!("{key}-changed"))),
+            cx,
+            |_, _| Changed { generation, at: std::time::Instant::now() },
+        );
+        let since = changed.update(cx, |c, _| {
+            if c.generation != generation {
+                *c = Changed { generation, at: std::time::Instant::now() };
+            }
+            c.at.elapsed()
+        });
+        let moving = generation > 0 && !reduced;
+        // The old pane slips away first, then the new one slides in.
+        let has_panes = self.panes.is_some();
+        let mut panes = self.panes;
+        let leaving = match panes.as_mut() {
+            Some(panes) if moving && prev != selected && since < PANE_OUT => panes.take(prev, window, cx).map(|old| {
+                slide_out(
+                    generation_id(&format!("{key}-out"), generation),
+                    direction,
+                    // Its own id level, so its state never mixes with the new pane's.
+                    div().absolute().inset_0().child(div().id("leaving").size_full().child(old)),
+                    cx,
+                )
+            }),
+            _ => None,
+        };
+        let content = match panes.as_mut() {
+            Some(panes) => panes.take(selected, window, cx),
+            None => self.content,
+        }
+        .unwrap_or_else(|| div().into_any_element());
+        let wait = if has_panes { PANE_OUT } else { Duration::ZERO };
+        let pane = if moving {
+            slide_in_after(
+                generation_id(&format!("{key}-c"), generation),
+                direction,
+                wait,
+                div().size_full().child(content),
+                cx,
+            )
+        } else {
+            div().size_full().child(content).into_any_element()
+        };
         div()
             .id(self.id)
             .flex()
@@ -200,12 +284,10 @@ impl RenderOnce for Pivot {
                 div()
                     .flex_1()
                     .min_h_0()
+                    .relative()
                     .pt(u(8.))
-                    .child(if generation == 0 {
-                        div().size_full().child(content).into_any_element()
-                    } else {
-                        slide_in(generation_id(&format!("{key}-c"), generation), direction, div().size_full().child(content), cx)
-                    }),
+                    .children(leaving)
+                    .child(pane),
             )
             .when_some(on_select.filter(|_| len > 1), |el, f| {
                 el.child(pager::surface(

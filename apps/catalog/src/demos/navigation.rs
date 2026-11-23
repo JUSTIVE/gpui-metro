@@ -85,28 +85,30 @@ const MAIL: [Mail; 7] = [
 ];
 
 pub fn pivot_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
-    let folder = s.pivot;
-    let rows = MAIL
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| match folder {
-            1 => m.unread,
-            2 => m.flagged,
-            3 => m.urgent,
-            _ => true,
-        })
-        .map(|(ix, m)| {
-            let mut item = list_item(("mail", ix), m.from).subtitle(m.subject).detail(m.preview);
-            if !m.unread {
-                item = item.subtle_subtitle();
-            }
-            item
-        });
-    let pane = div().id("pivot-pane").size_full().overflow_y_scroll().px(u(PAGE_MARGIN)).children(rows);
-    pivot("demo-pivot", FOLDERS, folder)
+    // Every folder's pane, so the pivot can show the old one leaving.
+    let pane = |folder: usize, _: &mut gpui::Window, _: &mut gpui::App| {
+        let rows = MAIL
+            .iter()
+            .enumerate()
+            .filter(move |(_, m)| match folder {
+                1 => m.unread,
+                2 => m.flagged,
+                3 => m.urgent,
+                _ => true,
+            })
+            .map(|(ix, m)| {
+                let mut item = list_item(("mail", ix), m.from).subtitle(m.subject).detail(m.preview);
+                if !m.unread {
+                    item = item.subtle_subtitle();
+                }
+                item
+            });
+        div().id("pivot-pane").size_full().overflow_y_scroll().px(u(PAGE_MARGIN)).children(rows)
+    };
+    pivot("demo-pivot", FOLDERS, s.pivot)
         .title("outlook")
         .on_select(on(cx, |s, ix| s.pivot = ix))
-        .child(pane)
+        .panes(pane)
         .into_any_element()
 }
 

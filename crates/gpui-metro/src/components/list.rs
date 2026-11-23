@@ -14,7 +14,7 @@ use crate::{
     Icon, Theme,
     button::ClickHandler,
     chrome::PAGE_MARGIN,
-    motion::{Direction, enter_div},
+    motion::{Direction, enter_div, slide_line},
     theme::{LIGHT, SEMILIGHT, size},
 };
 
@@ -126,16 +126,23 @@ impl RenderOnce for ListItem {
                             .text_ellipsis()
                             .child(self.title),
                     )
+                    // In a sliding pivot pane, the lines under the title trail it.
                     .when_some(self.subtitle, |el, s| {
-                        el.child(
+                        el.child(slide_line(
+                            "subtitle",
+                            1,
                             div()
                                 .text_size(u(size::NORMAL))
                                 .text_color(if self.subtitle_accent { p.accent } else { p.subtle })
                                 .child(s),
-                        )
+                        ))
                     })
                     .when_some(self.detail, |el, s| {
-                        el.child(div().text_size(u(size::NORMAL)).text_color(p.subtle).child(s))
+                        el.child(slide_line(
+                            "detail",
+                            2,
+                            div().text_size(u(size::NORMAL)).text_color(p.subtle).child(s),
+                        ))
                     }),
             )
             .children(self.trailing)
