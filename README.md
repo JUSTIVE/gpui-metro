@@ -60,8 +60,20 @@ or a transition is in progress, lives inside the component.
 
 ### Fidelity notes
 
-GPUI has no 3D transforms, so Metro's turnstile and swivel transitions are
-rendered as their 2D silhouettes: a short horizontal travel with a hard
-exponential ease-out, staggered per item. Live tiles use the WP7 hub-tile
-"peek" (the face slides up to reveal the back) instead of a 3D flip. Segoe WP
-is substituted by Helvetica Neue on macOS and Segoe UI on Windows.
+GPUI can't transform boxes or text, so Metro's 3D turnstile is *projected*:
+an element turned about the screen's left edge is drawn at the span a
+perspective camera would see. It narrows toward the hinge, and tiles also
+shrink at the far side. The content is clipped rather than reflowed
+(`motion::turn`). Timings follow the WP Toolkit: forward-in from −80° and
+back-in from 50°, both 350 ms on an exponential ease-out (exponent 6), with
+items feathered 40 ms apart. Tiles turnstile out to 90° on an ease-in, in
+reading order, with the tapped tile last.
+
+Pivot headers glide from where the old selection sat, and the pane slides in
+from the side you moved to. Panorama content follows the input (Shift +
+wheel, or a trackpad swipe), pages once you pass a third of a section, and
+otherwise springs back. The title moves at 0.4× for parallax.
+
+Live tiles use the WP7 hub-tile "peek" (the face slides up) rather than a
+3D flip. Segoe WP is substituted by Helvetica Neue on macOS and Segoe UI on
+Windows.

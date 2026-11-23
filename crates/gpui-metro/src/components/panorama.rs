@@ -14,7 +14,7 @@ use gpui::{
 use crate::{
     Theme,
     chrome::PAGE_MARGIN,
-    motion::{ease_out_expo, generation_id, lerp, track},
+    motion::{ease_out_exp6, lerp, track},
     pager::{self, Pager},
     pivot::SelectHandler,
     theme::{LIGHT, size},
@@ -58,6 +58,39 @@ impl Panorama {
 
 /// Title travel per section, as a fraction of the section travel.
 pub const PARALLAX: f32 = 0.4;
+/// Snap into a section: decelerates hard (WP Toolkit exponential, exponent 6).
+const SETTLE: Duration = Duration::from_millis(450);
+
+#[derive(Clone, Copy)]
+enum Motion {
+    /// The content trails the input, at this position.
+    Following(f32),
+    /// Settling (key, from, to).
+    Settling(u64, f32, f32),
+    Rest(f32),
+}
+
+/// Positions a layer (title or strip) for `motion`; `left` maps a section
+/// position to the layer's left edge.
+fn place(
+    layer: gpui::Div,
+    key: &str,
+    name: &str,
+    motion: Motion,
+    dur: Duration,
+    left: impl Fn(f32) -> gpui::Pixels + 'static,
+) -> AnyElement {
+    match motion {
+        Motion::Following(pos) | Motion::Rest(pos) => layer.left(left(pos)).into_any_element(),
+        Motion::Settling(settle, from, to) => layer
+            .with_animation(
+                ElementId::from((SharedString::from(format!("{key}-{name}")), settle as usize)),
+                Animation::new(dur).with_easing(ease_out_exp6),
+                move |el, t| el.left(left(lerp(from, to, t))),
+            )
+            .into_any_element(),
+    }
+}
 
 impl RenderOnce for Panorama {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -68,12 +101,32 @@ impl RenderOnce for Panorama {
         let key = format!("{}-pano", self.id);
         let (prev, generation) = track(ElementId::from(SharedString::from(key.clone())), selected, window, cx);
         let sw = self.section_width;
-        let animate = generation > 0 && !reduced;
-        let dur = Duration::from_millis(480);
+        let pager_state = window.use_keyed_state(
+            ElementId::from(SharedString::from(format!("{key}-pager"))),
+            cx,
+            |_, cx| Pager::new(cx),
+        );
+        // Where the strip is (in sections), and how it is moving: following
+        // the input, settling into a section, or at rest.
+        let motion = pager_state.update(cx, |pg, _| {
+            if generation != pg.seen_generation {
+                pg.seen_generation = generation;
+                let release = pg.release.take().unwrap_or(0.);
+                pg.settle_to(prev as f32 - release, selected as f32);
+            }
+            if pg.offset != 0. {
+                Motion::Following(selected as f32 - pg.offset / sw)
+            } else {
+                match pg.settle {
+                    Some((key, from, to)) if !reduced => Motion::Settling(key, from, to),
+                    _ => Motion::Rest(selected as f32),
+                }
+            }
+        });
+        let dur = SETTLE;
 
         let strip_left = move |pos: f32| px(PAGE_MARGIN - pos * sw);
         let title_left = move |pos: f32| px(PAGE_MARGIN - 6. - pos * sw * PARALLAX);
-        let (from, to) = (prev as f32, selected as f32);
 
         let title = div()
             .absolute()
@@ -83,17 +136,7 @@ impl RenderOnce for Panorama {
             .font_weight(LIGHT)
             .text_color(p.foreground)
             .child(SharedString::from(self.title.to_lowercase()));
-        let title: AnyElement = if animate {
-            title
-                .with_animation(
-                    generation_id(&format!("{key}-t"), generation),
-                    Animation::new(dur).with_easing(ease_out_expo),
-                    move |el, t| el.left(title_left(lerp(from, to, t))),
-                )
-                .into_any_element()
-        } else {
-            title.left(title_left(to)).into_any_element()
-        };
+        let title = place(title, &key, "t", motion, dur, title_left);
 
         let on_select = self.on_select.clone();
         let sections = self.sections.into_iter().enumerate().map(|(ix, s)| {
@@ -120,23 +163,7 @@ impl RenderOnce for Panorama {
                 })
         });
         let strip = div().absolute().top(px(132.)).bottom_0().flex().children(sections);
-        let strip: AnyElement = if animate {
-            strip
-                .with_animation(
-                    generation_id(&format!("{key}-s"), generation),
-                    Animation::new(dur).with_easing(ease_out_expo),
-                    move |el, t| el.left(strip_left(lerp(from, to, t))),
-                )
-                .into_any_element()
-        } else {
-            strip.left(strip_left(to)).into_any_element()
-        };
-
-        let pager_state = window.use_keyed_state(
-            ElementId::from(SharedString::from(format!("{key}-pager"))),
-            cx,
-            |_, cx| Pager::new(cx),
-        );
+        let strip = place(strip, &key, "s", motion, dur, strip_left);
         let on_select = self.on_select;
         div()
             .id(self.id)
@@ -148,8 +175,12 @@ impl RenderOnce for Panorama {
             .child(title)
             .child(strip)
             .when_some(on_select, |el, f| {
-                el.child(pager::surface(
+                el.child(pager::follow_surface(
                     pager_state,
+                    sw,
+                    selected,
+                    selected > 0,
+                    selected + 1 < len,
                     Rc::new(move |step, w, cx| {
                         let next = if step > 0 { selected + 1 } else { selected.wrapping_sub(1) };
                         if next < len {

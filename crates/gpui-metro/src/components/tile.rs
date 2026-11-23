@@ -13,7 +13,12 @@ use gpui::{
     prelude::FluentBuilder, px,
 };
 
-use crate::{Icon, Theme, motion::ease_in_out_cubic, theme::size};
+use crate::{
+    Icon, Theme,
+    chrome::PAGE_MARGIN,
+    motion::{ease_in_exp6, ease_in_out_cubic, turn},
+    theme::size,
+};
 
 /// Tile footprints in grid units (one unit = one small tile).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -383,7 +388,7 @@ impl TileGrid {
 }
 
 /// How long each tile takes to swing out.
-pub const EXIT_TILE: Duration = Duration::from_millis(220);
+pub const EXIT_TILE: Duration = Duration::from_millis(250);
 /// Gap between neighbouring tiles in the wave (compressed on big grids).
 const EXIT_STEP: Duration = Duration::from_millis(22);
 /// The whole wave (before the tapped tile) never takes longer than this.
@@ -417,10 +422,6 @@ pub fn exit_schedule(positions: &[(usize, usize)], tapped: usize) -> (Vec<Durati
 struct Exit {
     tapped: Option<usize>,
     generation: usize,
-}
-
-fn ease_in_quad(t: f32) -> f32 {
-    t * t
 }
 
 impl RenderOnce for TileGrid {
@@ -488,7 +489,8 @@ impl RenderOnce for TileGrid {
             }
 
             let (x, y) = (c as f32 * step, r as f32 * step);
-            let cell = div().absolute().left(px(x)).top(px(y)).child(t.metrics(unit, gap));
+            let (tw, th) = t.size.pixels(unit, gap);
+            let tile = t.metrics(unit, gap);
             match (&schedule, leaving) {
                 (Some(delays), Some((_, generation))) => {
                     let delay = delays[ix];
@@ -497,20 +499,41 @@ impl RenderOnce for TileGrid {
                         animations.push(Animation::new(delay));
                     }
                     let delayed = animations.len() == 1;
-                    animations.push(Animation::new(EXIT_TILE).with_easing(ease_in_quad));
-                    cell.with_animations(
-                        ElementId::from((SharedString::from(format!("tile-exit-{generation}")), ix)),
-                        animations,
+                    animations.push(Animation::new(EXIT_TILE).with_easing(ease_in_exp6));
+                    // Turnstile-out: every tile turns to 90° about the screen's
+                    // left edge (a page margin left of the grid) and is
+                    // projected: it narrows toward the hinge and its far side
+                    // recedes. The tile inside stays full size and is cropped.
+                    let project = move |phase: usize, t: f32| {
+                        let t = if delayed && phase == 0 { 0. } else { t };
+                        let r = turn(x + PAGE_MARGIN, tw, 90. * t);
+                        let h = th * (r.scale_left + r.scale_right) / 2.;
+                        (r, h)
+                    };
+                    let id = ElementId::from((SharedString::from(format!("tile-exit-{generation}")), ix));
+                    let body = div().absolute().left_0().w(px(tw)).h(px(th)).child(tile).with_animations(
+                        id.clone(),
+                        animations.clone(),
                         move |el, phase, t| {
-                            // The 2D silhouette of swinging away on the left edge:
-                            // accelerate leftwards while fading out.
-                            let t = if delayed && phase == 0 { 0. } else { t };
-                            el.left(px(x - 140. * t)).opacity(1. - t)
+                            let (_, h) = project(phase, t);
+                            el.top(px(-(th - h) / 2.))
                         },
-                    )
-                    .into_any_element()
+                    );
+                    div()
+                        .absolute()
+                        .overflow_hidden()
+                        .child(body)
+                        .with_animations(id, animations, move |el, phase, t| {
+                            let (r, h) = project(phase, t);
+                            el.left(px(r.left - PAGE_MARGIN))
+                                .top(px(y + (th - h) / 2.))
+                                .w(px(r.width))
+                                .h(px(h))
+                                .opacity(if r.width < 1. { 0. } else { 1. })
+                        })
+                        .into_any_element()
                 }
-                _ => cell.into_any_element(),
+                _ => div().absolute().left(px(x)).top(px(y)).child(tile).into_any_element(),
             }
         });
 

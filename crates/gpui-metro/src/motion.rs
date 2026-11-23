@@ -1,20 +1,41 @@
-//! Metro motion. The phone's signature transitions were 3D (turnstile,
-//! swivel); GPUI has no 3D transform for boxes, so they are rendered as
-//! their 2D silhouettes: a short horizontal travel with a fast-out curve,
-//! staggered per element ("feather"), and a fade.
+//! Metro motion.
+//!
+//! The phone's signature transitions are 3D: pages and tiles *turnstile*,
+//! swinging about a vertical hinge on the screen's left edge. GPUI can't
+//! transform boxes or text, so the turn is projected instead: a flat element
+//! rotated by θ about the hinge, seen through a perspective camera, covers a
+//! narrower span that hugs the hinge. [`turn`] computes that span, and
+//! [`enter`] clips the element to it without reflowing its contents, so a
+//! page reads as swinging in edge-first rather than sliding or fading.
+//!
+//! Timings follow the Windows Phone Toolkit's `TurnstileTransition`:
+//! forward-in swings from −80° in 350 ms on an exponential ease-out
+//! (exponent 6); back-in from 50°; turnstile-out swings to 90° on an ease-in.
 
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, App, ElementId, IntoElement, ParentElement, SharedString, Styled, Window,
-    div, px,
+    Animation, AnimationExt, App, ElementId, IntoElement, ParentElement, SharedString, Styled, Window, div, px,
+    relative,
 };
 
-use crate::Theme;
+use crate::{Theme, chrome::PAGE_MARGIN};
 
 /// Metro's curve: everything decelerates hard into place (exponential out).
 pub fn ease_out_expo(t: f32) -> f32 {
     if t >= 1. { 1. } else { 1. - 2f32.powf(-10. * t) }
+}
+
+/// Silverlight's `ExponentialEase` (EaseOut, exponent 6), the curve of every
+/// WP Toolkit transition.
+pub fn ease_out_exp6(t: f32) -> f32 {
+    let t = t.clamp(0., 1.);
+    (1. - (-6. * t).exp()) / (1. - (-6f32).exp())
+}
+
+/// The ease-in counterpart, for elements leaving.
+pub fn ease_in_exp6(t: f32) -> f32 {
+    1. - ease_out_exp6(1. - t)
 }
 
 pub fn ease_in_out_cubic(t: f32) -> f32 {
@@ -25,18 +46,26 @@ pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
-/// The standard entrance: 350 ms, 40 px of travel.
+/// A turnstile entrance.
 pub const ENTER: Duration = Duration::from_millis(350);
 /// Per-item stagger in a turnstile feather.
-pub const FEATHER: Duration = Duration::from_millis(45);
+pub const FEATHER: Duration = Duration::from_millis(40);
+/// Where a forward entrance starts its swing (right edge toward the viewer).
+pub const FORWARD_IN_DEG: f32 = -80.;
+/// Where a back entrance starts its swing (right edge away from the viewer).
+pub const BACKWARD_IN_DEG: f32 = 50.;
+/// Camera distance for the projection, in px (Silverlight's `PlaneProjection`).
+pub const PERSPECTIVE: f32 = 1000.;
+/// Width assumed for page content when projecting it (a 480 px page minus margins).
+pub const PAGE_CONTENT_WIDTH: f32 = 432.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
-    /// Content arrives from the right (forward navigation).
+    /// Forward navigation: swings in from −80°.
     Forward,
-    /// Content arrives from the left (back navigation).
+    /// Back navigation: swings in from 50°.
     Backward,
-    /// Content drops in from above (toasts, message boxes).
+    /// Drops in from above (toasts, message boxes, jump grid).
     Down,
 }
 
@@ -44,9 +73,41 @@ fn reduced(cx: &App) -> bool {
     cx.try_global::<Theme>().map(|t| t.reduced_motion).unwrap_or(false)
 }
 
-/// Turnstile-in: slides `child` in from `direction` while fading up, after
-/// `index * FEATHER` of delay. Re-plays whenever `id` changes, so key it by
-/// whatever the content represents (page, pivot item, …).
+/// A flat element's projection after turning about the hinge.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Turn {
+    /// Projected left edge, measured from the hinge.
+    pub left: f32,
+    /// Projected width (0 once the element is edge-on or facing away).
+    pub width: f32,
+    /// Perspective scale at the left and right edges (vertical size factor).
+    pub scale_left: f32,
+    pub scale_right: f32,
+}
+
+/// Projects an element spanning `offset..offset + width` from the hinge,
+/// turned by `degrees` (positive = right edge swings away from the viewer).
+pub fn turn(offset: f32, width: f32, degrees: f32) -> Turn {
+    let (sin, cos) = degrees.to_radians().sin_cos();
+    let project = |d: f32| {
+        let k = PERSPECTIVE / (PERSPECTIVE + d * sin).max(1.);
+        (d * cos * k, k)
+    };
+    let (x0, k0) = project(offset);
+    let (x1, k1) = project(offset + width);
+    Turn { left: x0, width: (x1 - x0).max(0.), scale_left: k0, scale_right: k1 }
+}
+
+/// Fraction of its width, and px offset of its left edge, that page content
+/// (sitting `PAGE_MARGIN` from the hinge) shows at `degrees`.
+fn page_turn(degrees: f32) -> (f32, f32) {
+    let t = turn(PAGE_MARGIN, PAGE_CONTENT_WIDTH, degrees);
+    ((t.width / PAGE_CONTENT_WIDTH).clamp(0., 1.), t.left - PAGE_MARGIN)
+}
+
+/// Turnstile-in: `child` swings in about the left edge, after
+/// `index * FEATHER` (the feather: list rows follow one another). Re-plays
+/// whenever `id` changes, so key it by what the content represents.
 pub fn enter(
     id: impl Into<ElementId>,
     direction: Direction,
@@ -63,30 +124,71 @@ pub fn enter_div(
     id: impl Into<ElementId>,
     direction: Direction,
     index: usize,
-    wrapper: gpui::Div,
+    mut wrapper: gpui::Div,
     cx: &App,
 ) -> gpui::AnyElement {
-    let wrapper = wrapper.relative();
     if reduced(cx) {
         return wrapper.into_any_element();
     }
+    let id = id.into();
     let delay = FEATHER * index as u32;
     let mut animations = Vec::with_capacity(2);
     if !delay.is_zero() {
         animations.push(Animation::new(delay));
     }
-    let has_delay = animations.len() == 1;
-    animations.push(Animation::new(ENTER).with_easing(ease_out_expo));
+    let delayed = animations.len() == 1;
+    animations.push(Animation::new(ENTER).with_easing(ease_out_exp6));
+    let progress = move |phase: usize, t: f32| if delayed && phase == 0 { 0. } else { t };
+
+    if direction == Direction::Down {
+        return wrapper
+            .relative()
+            .with_animations(id, animations, move |el, phase, t| {
+                let t = progress(phase, t);
+                el.top(px(-24. * (1. - t))).opacity(t)
+            })
+            .into_any_element();
+    }
+
+    let from = if direction == Direction::Forward { FORWARD_IN_DEG } else { BACKWARD_IN_DEG };
+    let fraction = move |phase, t| page_turn(lerp(from, 0., progress(phase, t)));
+
+    // The clip keeps the wrapper's own sizing in its parent's layout…
+    let mut clip = div().relative().overflow_hidden();
+    {
+        let (src, dst) = (wrapper.style(), clip.style());
+        dst.size.height = src.size.height;
+        dst.min_size.height = src.min_size.height;
+        dst.flex_grow = src.flex_grow;
+        dst.flex_shrink = src.flex_shrink;
+        dst.flex_basis = src.flex_basis;
+    }
+    // …and narrows toward the hinge, while the content inside stays at full
+    // width (1 / fraction of the clip) so nothing reflows mid-turn. Both run
+    // the same timeline, so they stay in step frame for frame.
+    let content = wrapper.with_animations(id.clone(), animations.clone(), move |el, phase, t| {
+        let (f, _) = fraction(phase, t);
+        el.w(relative(1. / f.max(0.02)))
+    });
+    clip.child(content)
+        .with_animations(id, animations, move |el, phase, t| {
+            let (f, offset) = fraction(phase, t);
+            el.w(relative(f.max(0.02))).ml(px(offset)).opacity(if f < 0.04 { 0. } else { 1. })
+        })
+        .into_any_element()
+}
+
+/// Pivot-style entrance: the whole pane slides in from the side it came
+/// from, without fading, decelerating hard (500 ms, exponent 6).
+pub fn slide_in(id: impl Into<ElementId>, direction: Direction, wrapper: gpui::Div, cx: &App) -> gpui::AnyElement {
+    if reduced(cx) || direction == Direction::Down {
+        return wrapper.into_any_element();
+    }
+    let sign = if direction == Direction::Forward { 1. } else { -1. };
     wrapper
-        .with_animations(id, animations, move |el, ix, t| {
-            let t = if has_delay && ix == 0 { 0. } else { t };
-            let travel = 40. * (1. - t);
-            let el = el.opacity(t);
-            match direction {
-                Direction::Forward => el.left(px(travel)),
-                Direction::Backward => el.left(px(-travel)),
-                Direction::Down => el.top(px(-travel * 0.6)),
-            }
+        .relative()
+        .with_animation(id, Animation::new(Duration::from_millis(500)).with_easing(ease_out_exp6), move |el, t| {
+            el.left(relative(sign * 0.6 * (1. - t)))
         })
         .into_any_element()
 }
@@ -140,5 +242,28 @@ mod tests {
         assert_eq!(ease_in_out_cubic(0.), 0.);
         assert_eq!(ease_in_out_cubic(1.), 1.);
         assert!((ease_in_out_cubic(0.5) - 0.5).abs() < 1e-6);
+        assert!(ease_out_exp6(0.) == 0. && (ease_out_exp6(1.) - 1.).abs() < 1e-6);
+        assert!(ease_in_exp6(0.2) < 0.1, "leaving starts slow");
+    }
+
+    #[test]
+    fn a_flat_element_projects_to_itself() {
+        let t = turn(24., 432., 0.);
+        assert!((t.left - 24.).abs() < 1e-3 && (t.width - 432.).abs() < 1e-3);
+        assert!((t.scale_left - 1.).abs() < 1e-6);
+    }
+
+    #[test]
+    fn turning_narrows_toward_the_hinge() {
+        let away = turn(24., 432., 50.);
+        assert!(away.width < 432. * 0.6, "{away:?}");
+        assert!(away.scale_right < away.scale_left, "the far edge recedes");
+        let toward = turn(24., 432., -80.);
+        assert!(toward.width < 432. * 0.5, "{toward:?}");
+        assert!(toward.scale_right > 1., "the far edge comes toward the viewer");
+        assert_eq!(turn(24., 432., 90.).width.round(), 0., "edge-on at 90°");
+        // Widths grow monotonically as an entrance settles.
+        let widths: Vec<f32> = (0..=10).map(|i| page_turn(lerp(FORWARD_IN_DEG, 0., i as f32 / 10.)).0).collect();
+        assert!(widths.windows(2).all(|w| w[0] <= w[1] + 1e-6), "{widths:?}");
     }
 }
