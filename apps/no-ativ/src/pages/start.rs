@@ -227,6 +227,11 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
                     .id("start")
                     .flex_1()
                     .min_h_0()
+                    // A row, so the strip below keeps its content width:
+                    // as a block it was squeezed to the viewport, the
+                    // groups just overflowed it, and there was nothing to
+                    // scroll (gpui measures scroll range from children).
+                    .flex()
                     .overflow_x_scroll()
                     .track_scroll(&scroll)
                     // A mouse wheel scrolls the start screen sideways.
@@ -238,7 +243,15 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
                         wheel.set_offset(gpui::point(x, wheel.offset().y));
                         window.refresh();
                     })
-                    .child(div().flex().px(u(PAGE_MARGIN)).pb(u(48.)).child(grid).child(div().w(u(96.)))),
+                    .child(
+                        div()
+                            .flex()
+                            .flex_none()
+                            .px(u(PAGE_MARGIN))
+                            .pb(u(48.))
+                            .child(grid)
+                            .child(div().w(u(96.))),
+                    ),
             ),
     )
 }
