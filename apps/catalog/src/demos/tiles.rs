@@ -82,7 +82,7 @@ pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                             .title("people")
                             .icon(Icon::People)
                             .back(back_text("kristin", "new photo"))
-                            .period(5.),
+                            .period(10.),
                     )
                     .child(
                         tile("tile-music", TileSize::Medium)
@@ -90,7 +90,7 @@ pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                             .icon(Icon::Play)
                             .color(Accent::Orange.color())
                             .back(back_text("now playing", "daft punk · get lucky"))
-                            .period(5.)
+                            .period(10.)
                             .phase(0.5),
                     ),
             )
@@ -101,7 +101,7 @@ pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                     .icon(Icon::Snow)
                     .color(Accent::Cobalt.color())
                     .back(back_text("seattle −2°", "snow through the evening, clearing overnight"))
-                    .period(7.)
+                    .period(12.)
                     .phase(0.25),
             ),
     )
@@ -119,13 +119,13 @@ fn start_tiles(mail_count: u32) -> Vec<Tile> {
             .title("people")
             .icon(Icon::People)
             .back(back_text("ben, kristin, anna", "3 new posts"))
-            .period(6.),
+            .period(11.),
         tile("start-mail", TileSize::Medium).title("outlook").icon(Icon::Mail).count(mail_count),
         tile("start-calendar", TileSize::Medium)
             .title("calendar")
             .icon(Icon::Calendar)
             .back(back_text("dentist", "3:30 pm today"))
-            .period(8.)
+            .period(13.)
             .phase(0.4),
         tile("start-music", TileSize::Wide).title("music+videos").icon(Icon::Play).color(Accent::Orange.color()),
         tile("start-clock", TileSize::Small).icon(Icon::Clock),
@@ -135,7 +135,7 @@ fn start_tiles(mail_count: u32) -> Vec<Tile> {
             .title("weather")
             .icon(Icon::Snow)
             .back(back_text("seattle −2°", "snow"))
-            .period(7.)
+            .period(12.)
             .phase(0.7),
         tile("start-lock", TileSize::Small).icon(Icon::Lock),
         tile("start-favorite", TileSize::Small).icon(Icon::Favorite).color(Accent::Crimson.color()),

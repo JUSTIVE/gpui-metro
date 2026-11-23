@@ -291,7 +291,7 @@ tile("people", TileSize::Wide)
     .title("people")
     .front(|_size, _bg| div().child("..."))
     .back(|_size, _bg| div().child("ben"))
-    .period(6.)
+    .period(11.)
     .phase(0.5)"#
             }
             Page::TileGrid => {

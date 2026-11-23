@@ -13,7 +13,7 @@ use gpui::{
     prelude::FluentBuilder, px,
 };
 
-use crate::{Icon, Theme, motion::ease_out_expo, theme::size};
+use crate::{Icon, Theme, motion::ease_in_out_cubic, theme::size};
 
 /// Tile footprints in grid units (one unit = one small tile).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -144,7 +144,7 @@ pub fn tile(id: impl Into<ElementId>, size: TileSize) -> Tile {
         color: None,
         front: None,
         back: None,
-        period: 9.,
+        period: 12.,
         phase: 0.,
         unit: TILE_UNIT,
         gap: TILE_GAP,
@@ -183,7 +183,7 @@ impl Tile {
         self
     }
     pub fn period(mut self, seconds: f32) -> Self {
-        self.period = seconds.max(2.);
+        self.period = seconds.max(6.);
         self
     }
     pub fn phase(mut self, phase: f32) -> Self {
@@ -202,16 +202,19 @@ impl Tile {
 }
 
 /// Fraction of the face scrolled away (0 = front showing, 1 = back showing)
-/// at cycle time `t`.
-pub fn peek_offset(t: f32) -> f32 {
-    const SLIDE: f32 = 0.06;
+/// at cycle time `t`. `slide` is the fraction of the cycle each slide takes.
+pub fn peek_offset(t: f32, slide: f32) -> f32 {
+    let slide = slide.clamp(0.001, 0.5);
     match t {
-        t if t < 0.5 - SLIDE => 0.,
-        t if t < 0.5 => ease_out_expo((t - (0.5 - SLIDE)) / SLIDE),
-        t if t < 1. - SLIDE => 1.,
-        t => 1. - ease_out_expo((t - (1. - SLIDE)) / SLIDE),
+        t if t < 0.5 - slide => 0.,
+        t if t < 0.5 => ease_in_out_cubic((t - (0.5 - slide)) / slide),
+        t if t < 1. - slide => 1.,
+        t => 1. - ease_in_out_cubic((t - (1. - slide)) / slide),
     }
 }
+
+/// How long one slide between faces takes, regardless of the cycle length.
+pub const PEEK_SLIDE_SECS: f32 = 0.9;
 
 impl RenderOnce for Tile {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -251,6 +254,7 @@ impl RenderOnce for Tile {
                 let back = back(size, bg);
                 let period = Duration::from_secs_f32(self.period);
                 let phase = self.phase;
+                let slide = PEEK_SLIDE_SECS / self.period;
                 // The strip holds both faces stacked; it rides up by one face.
                 div()
                     .absolute()
@@ -264,7 +268,7 @@ impl RenderOnce for Tile {
                     .with_animation(
                         ElementId::from((SharedString::from(format!("{}-peek", self.id)), 0usize)),
                         Animation::new(period).repeat(),
-                        move |el, t| el.top(px(-h * peek_offset((t + phase).fract()))),
+                        move |el, t| el.top(px(-h * peek_offset((t + phase).fract(), slide))),
                     )
                     .into_any_element()
             }
@@ -436,9 +440,15 @@ mod tests {
 
     #[test]
     fn peek_rests_on_each_face() {
-        assert_eq!(peek_offset(0.1), 0.);
-        assert_eq!(peek_offset(0.7), 1.);
-        assert!(peek_offset(0.47) > 0. && peek_offset(0.47) < 1.);
-        assert!(peek_offset(0.999) < 0.1);
+        let slide = PEEK_SLIDE_SECS / 12.;
+        assert_eq!(peek_offset(0.1, slide), 0.);
+        assert_eq!(peek_offset(0.7, slide), 1.);
+        assert!(peek_offset(0.47, slide) > 0. && peek_offset(0.47, slide) < 1.);
+        assert!(peek_offset(0.999, slide) < 0.1);
+        // The slide lasts the same wall-clock time whatever the period.
+        for period in [6f32, 12., 20.] {
+            let slide = PEEK_SLIDE_SECS / period;
+            assert!((slide * period - PEEK_SLIDE_SECS).abs() < 1e-5);
+        }
     }
 }

@@ -112,7 +112,7 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
                     ],
                 ))
                 .phase(0.6)
-                .period(11.),
+                .period(15.),
             None => t,
         }
     };
@@ -135,7 +135,7 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
                     vec![s.code.clone(), s.zone.to_lowercase()],
                 ))
                 .phase(0.18)
-                .period(7.),
+                .period(12.),
             None => t,
         }
     };
