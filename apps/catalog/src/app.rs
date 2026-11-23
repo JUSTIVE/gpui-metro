@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use gpui::{
-    AppContext, Context, Entity, FontWeight, IntoElement, ParentElement, Render, SharedString, Styled, Subscription,
+    AppContext, Context, Entity, StyleRefinement, FontWeight, IntoElement, ParentElement, Render, SharedString, Styled, Subscription,
     Task, Window, div, prelude::*,
 };
 use gpui_metro::u;
@@ -40,9 +40,12 @@ pub struct Catalog {
     /// A start screen's exit (its tiles' wave) ends on this timer.
     _leave: Option<Task<()>>,
     _looper: Task<()>,
-    pub search: Entity<TextInput>,
     pub query: SharedString,
     pub demo: DemoState,
+    /// The index and the top bar are views of their own, embedded cached:
+    /// while the phone animates, they're reused instead of laid out again.
+    sidebar: Entity<sidebar::Sidebar>,
+    topbar: Entity<topbar::TopBar>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -52,10 +55,14 @@ impl Catalog {
         let filter = cx.subscribe(&search, |this, input, e: &InputEvent, cx| {
             if let InputEvent::Changed = e {
                 this.query = input.read(cx).text().to_string().into();
+                this.sync_sidebar(cx);
                 cx.notify();
             }
         });
         let demo = DemoState::new(cx);
+        let catalog = cx.entity().downgrade();
+        let sidebar = cx.new(|cx| sidebar::Sidebar::new(page, search, catalog, cx));
+        let topbar = cx.new(topbar::TopBar::new);
         let submit = cx.subscribe(&demo.message_input, |this, input, e: &InputEvent, cx| {
             if let InputEvent::Submit = e {
                 let sent = input.read(cx).text().trim().to_string();
@@ -93,9 +100,10 @@ impl Catalog {
             _looper: looper,
             turn: Some(motion::Turnstile::enter(Direction::Forward)),
             _leave: None,
-            search,
             query: SharedString::default(),
             demo,
+            sidebar,
+            topbar,
             _subscriptions: vec![filter, submit, echo],
         }
     }
@@ -103,10 +111,19 @@ impl Catalog {
     /// Navigates the phone to `page` the Metro way: the current page
     /// turnstiles out (a start screen's tiles swing away instead), then the
     /// new one turnstiles in.
+    /// Tells the cached sidebar what to show (it redraws only on a change).
+    fn sync_sidebar(&self, cx: &mut Context<Self>) {
+        let (page, query) = (self.page, self.query.clone());
+        self.sidebar.update(cx, |s, cx| s.show(page, &query, cx));
+    }
+
     pub fn go(&mut self, page: Page, cx: &mut Context<Self>) {
         if page == self.page {
             return;
         }
+        // Mark the new page in the index at once, even while the old one leaves.
+        let query = self.query.clone();
+        self.sidebar.update(cx, |s, cx| s.show(page, &query, cx));
         if Theme::get(cx).reduced_motion {
             self.page = page;
             cx.notify();
@@ -223,7 +240,6 @@ impl Catalog {
 impl Render for Catalog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Theme::palette(cx);
-        let sidebar = sidebar::render(self.page, &self.query, &self.search, cx);
         div()
             .size_full()
             .flex()
@@ -231,7 +247,18 @@ impl Render for Catalog {
             .bg(p.background)
             .text_color(p.foreground)
             .font_family(Theme::font(cx))
-            .child(topbar::render(cx))
-            .child(div().flex().flex_1().min_h_0().child(sidebar).child(self.main_area(window, cx)))
+            .child(self.topbar.clone().cached(StyleRefinement::default().w_full().h(u(topbar::HEIGHT)).flex_none()))
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        self.sidebar
+                            .clone()
+                            .cached(StyleRefinement::default().w(u(sidebar::WIDTH)).h_full().flex_none()),
+                    )
+                    .child(self.main_area(window, cx)),
+            )
     }
 }

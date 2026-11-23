@@ -1,8 +1,8 @@
 //! The catalog's top bar: name, ground toggle, accent swatches, reduced motion.
 
 use gpui::{
-    App, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div,
-    prelude::FluentBuilder,
+    App, Context, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement, Styled,
+    Subscription, Window, div, prelude::FluentBuilder,
 };
 use gpui_metro::u;
 use gpui_metro::{
@@ -10,9 +10,28 @@ use gpui_metro::{
     theme::{LIGHT, SEMIBOLD, size},
 };
 
-use crate::app::Catalog;
+/// The top bar as its own view, embedded cached: it changes only with the
+/// theme, so it isn't laid out again on every animation frame.
+pub struct TopBar {
+    _theme: Subscription,
+}
 
-pub fn render(cx: &mut Context<Catalog>) -> impl IntoElement + use<> {
+impl TopBar {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        Self { _theme: cx.observe_global::<Theme>(|_, cx| cx.notify()) }
+    }
+}
+
+/// Height of the bar, in design px.
+pub const HEIGHT: f32 = 64.;
+
+impl Render for TopBar {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        render(cx)
+    }
+}
+
+fn render(cx: &mut App) -> impl IntoElement + use<> {
     let theme = Theme::get(cx);
     let (mode, accent, reduced) = (theme.mode, theme.accent, theme.reduced_motion);
     let p = theme.palette;
@@ -52,7 +71,7 @@ pub fn render(cx: &mut Context<Catalog>) -> impl IntoElement + use<> {
         .flex_none()
         .items_center()
         .gap(u(28.))
-        .h(u(64.))
+        .size_full()
         .px(u(24.))
         .border_b_1()
         .border_color(p.disabled.opacity(0.3))

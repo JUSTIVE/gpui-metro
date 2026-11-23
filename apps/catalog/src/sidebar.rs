@@ -1,8 +1,8 @@
 //! The component index: a search box over the pages grouped by section.
 
 use gpui::{
-    Context, Entity, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div,
-    prelude::FluentBuilder,
+    Context, Entity, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, WeakEntity, Window, div, prelude::FluentBuilder,
 };
 use gpui_metro::u;
 use gpui_metro::{
@@ -30,57 +30,87 @@ fn matches(query: &str) -> Vec<(Group, Vec<Page>)> {
         .collect()
 }
 
-pub fn render(
+/// The sidebar as its own view, so the catalog can embed it cached: a page
+/// turning in the phone redraws every frame, and the index needn't be laid
+/// out again each time. It re-renders only when told the page or query
+/// changed ([`Sidebar::show`]) or the theme changes.
+pub struct Sidebar {
     selected: Page,
-    query: &str,
-    search: &Entity<TextInput>,
-    cx: &mut Context<Catalog>,
-) -> impl IntoElement + use<> {
-    let p = Theme::palette(cx);
-    let groups = matches(query);
-    let empty = groups.is_empty();
+    query: SharedString,
+    search: Entity<TextInput>,
+    catalog: WeakEntity<Catalog>,
+    _theme: Subscription,
+}
 
-    let sections = groups.into_iter().map(|(g, pages)| {
+impl Sidebar {
+    pub fn new(selected: Page, search: Entity<TextInput>, catalog: WeakEntity<Catalog>, cx: &mut Context<Self>) -> Self {
+        let theme = cx.observe_global::<Theme>(|_, cx| cx.notify());
+        Self { selected, query: SharedString::default(), search, catalog, _theme: theme }
+    }
+
+    /// Updates what the index shows; redraws only if it changed.
+    pub fn show(&mut self, selected: Page, query: &SharedString, cx: &mut Context<Self>) {
+        if self.selected != selected || &self.query != query {
+            self.selected = selected;
+            self.query = query.clone();
+            cx.notify();
+        }
+    }
+}
+
+/// Width of the sidebar, in design px.
+pub const WIDTH: f32 = 250.;
+
+impl Render for Sidebar {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = Theme::palette(cx);
+        let selected = self.selected;
+        let groups = matches(&self.query);
+        let empty = groups.is_empty();
+
+        let sections = groups.into_iter().map(|(g, pages)| {
+            div()
+                .flex()
+                .flex_col()
+                .pb(u(14.))
+                .child(div().pb(u(4.)).child(text(TextStyle::GroupHeader, g.name())))
+                .children(pages.into_iter().map(|page| {
+                    let on = page == selected;
+                    let catalog = self.catalog.clone();
+                    div()
+                        .id(page.name())
+                        .py(u(3.))
+                        .text_size(u(size::MEDIUM_LARGE))
+                        .font_weight(SEMILIGHT)
+                        .text_color(if on { p.accent } else { p.foreground })
+                        .cursor_pointer()
+                        .hover(move |s| s.text_color(if on { p.accent } else { p.subtle }))
+                        .on_click(move |_, _, cx| {
+                            catalog.update(cx, |c, cx| c.go(page, cx)).ok();
+                        })
+                        .child(page.name())
+                }))
+        });
+
         div()
             .flex()
             .flex_col()
-            .pb(u(14.))
-            .child(div().pb(u(4.)).child(text(TextStyle::GroupHeader, g.name())))
-            .children(pages.into_iter().map(|page| {
-                let on = page == selected;
+            .size_full()
+            .border_r_1()
+            .border_color(p.disabled.opacity(0.3))
+            .child(div().px(u(20.)).pt(u(18.)).pb(u(12.)).child(text_box(&self.search)))
+            .child(
                 div()
-                    .id(page.name())
-                    .py(u(3.))
-                    .text_size(u(size::MEDIUM_LARGE))
-                    .font_weight(SEMILIGHT)
-                    .text_color(if on { p.accent } else { p.foreground })
-                    .cursor_pointer()
-                    .hover(move |s| s.text_color(if on { p.accent } else { p.subtle }))
-                    .on_click(cx.listener(move |this, _, _, cx| this.go(page, cx)))
-                    .child(page.name())
-            }))
-    });
-
-    div()
-        .flex()
-        .flex_col()
-        .flex_none()
-        .w(u(250.))
-        .h_full()
-        .border_r_1()
-        .border_color(p.disabled.opacity(0.3))
-        .child(div().px(u(20.)).pt(u(18.)).pb(u(12.)).child(text_box(search)))
-        .child(
-            div()
-                .id("sidebar-scroll")
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scroll()
-                .px(u(20.))
-                .pb(u(24.))
-                .children(sections)
-                .when(empty, |el| el.child(text(TextStyle::Subtle, "no components match"))),
-        )
+                    .id("sidebar-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .px(u(20.))
+                    .pb(u(24.))
+                    .children(sections)
+                    .when(empty, |el| el.child(text(TextStyle::Subtle, "no components match"))),
+            )
+    }
 }
 
 #[cfg(test)]
