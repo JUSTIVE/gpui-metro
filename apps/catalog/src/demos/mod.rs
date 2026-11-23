@@ -20,6 +20,7 @@ use gpui_metro::{PAGE_MARGIN, TextInput, TextStyle, motion::Direction, page_head
 use crate::{app::Catalog, pages::Page};
 
 pub use overlays::ToastState;
+pub use tiles::Launched;
 
 /// What a demo puts on the phone screen.
 pub struct Demo {
@@ -39,6 +40,10 @@ pub struct DemoState {
     // tiles
     pub mail_count: u32,
     pub more_tiles: bool,
+    /// The app opened from the start-screen demo, if any.
+    pub launched: Option<Launched>,
+    /// Bumps on every launch and return, so entrances replay.
+    pub launches: usize,
     // navigation
     pub pivot: usize,
     pub panorama: usize,
@@ -85,6 +90,8 @@ impl DemoState {
         Self {
             mail_count: 4,
             more_tiles: false,
+            launched: None,
+            launches: 0,
             pivot: 0,
             panorama: 0,
             app_bar_minimized: false,

@@ -172,6 +172,7 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
 
     let to = |page: fn() -> Page| nav.push(page);
     let grid = tile_grid()
+        .turnstile(true)
         .tile(runs.on_click(to(|| Page::Runs { pivot: 1 })))
         .tile(incidents.on_click(to(|| Page::Incidents { pivot: 0 })))
         .tile(shipments.on_click(to(|| Page::Shipments { pivot: 0 })))

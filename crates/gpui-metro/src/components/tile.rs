@@ -331,17 +331,24 @@ fn default_front(size: TileSize, icon: Option<Icon>, count: Option<u32>, ink: Hs
 /// The start screen: tiles packed by [`pack`] and positioned absolutely.
 #[derive(IntoElement)]
 pub struct TileGrid {
+    id: ElementId,
     tiles: Vec<Tile>,
     columns: usize,
     unit: f32,
     gap: f32,
+    turnstile: bool,
 }
 
 pub fn tile_grid() -> TileGrid {
-    TileGrid { tiles: Vec::new(), columns: 4, unit: TILE_UNIT, gap: TILE_GAP }
+    TileGrid { id: "tile-grid".into(), tiles: Vec::new(), columns: 4, unit: TILE_UNIT, gap: TILE_GAP, turnstile: false }
 }
 
 impl TileGrid {
+    /// Needed only to tell two grids in the same view apart.
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = id.into();
+        self
+    }
     pub fn tile(mut self, tile: Tile) -> Self {
         self.tiles.push(tile);
         self
@@ -360,6 +367,14 @@ impl TileGrid {
         self.gap = gap;
         self
     }
+    /// Launching from a tile plays the start screen's turnstile-out: the
+    /// tiles swing away in a wave from the top-left, the tapped tile last,
+    /// and only then does the tile's `on_click` run. Taps during the exit
+    /// are ignored. With reduced motion the click runs at once.
+    pub fn turnstile(mut self, on: bool) -> Self {
+        self.turnstile = on;
+        self
+    }
 
     /// The width this grid occupies, for centring.
     pub fn width(&self) -> f32 {
@@ -367,8 +382,49 @@ impl TileGrid {
     }
 }
 
+/// How long each tile takes to swing out.
+pub const EXIT_TILE: Duration = Duration::from_millis(220);
+/// Gap between neighbouring tiles in the wave (compressed on big grids).
+const EXIT_STEP: Duration = Duration::from_millis(22);
+/// The whole wave (before the tapped tile) never takes longer than this.
+const EXIT_WAVE_MAX: Duration = Duration::from_millis(260);
+/// The tapped tile lingers this long after the last of the others starts.
+const EXIT_HOLD: Duration = Duration::from_millis(90);
+
+/// Start delays for the turnstile-out, per tile, plus the total time until
+/// the last tile has gone. Untapped tiles leave in reading order (row, then
+/// column); the tapped one goes last.
+pub fn exit_schedule(positions: &[(usize, usize)], tapped: usize) -> (Vec<Duration>, Duration) {
+    let mut order: Vec<usize> = (0..positions.len()).filter(|&i| i != tapped).collect();
+    order.sort_by_key(|&i| (positions[i].1, positions[i].0));
+    let step = match order.len() {
+        0 | 1 => EXIT_STEP,
+        n => EXIT_STEP.min(EXIT_WAVE_MAX / (n as u32 - 1)),
+    };
+    let mut delays = vec![Duration::ZERO; positions.len()];
+    for (rank, &i) in order.iter().enumerate() {
+        delays[i] = step * rank as u32;
+    }
+    let last_other = order.len().checked_sub(1).map(|r| step * r as u32);
+    let tapped_delay = last_other.map_or(Duration::ZERO, |d| d + EXIT_HOLD);
+    if tapped < delays.len() {
+        delays[tapped] = tapped_delay;
+    }
+    (delays, tapped_delay + EXIT_TILE)
+}
+
+/// The turnstile-out a tile is in, if any.
+struct Exit {
+    tapped: Option<usize>,
+    generation: usize,
+}
+
+fn ease_in_quad(t: f32) -> f32 {
+    t * t
+}
+
 impl RenderOnce for TileGrid {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let sizes: Vec<TileSize> = self.tiles.iter().map(|t| t.size).collect();
         let positions = pack(&sizes, self.columns);
         let rows = packed_rows(&sizes, &positions);
@@ -376,15 +432,89 @@ impl RenderOnce for TileGrid {
         let width = self.width();
         let height = rows as f32 * step - if rows > 0 { self.gap } else { 0. };
         let (unit, gap) = (self.unit, self.gap);
-        div().relative().flex_none().w(px(width)).h(px(height)).children(
-            self.tiles.into_iter().zip(positions).map(move |(t, (c, r))| {
-                div()
-                    .absolute()
-                    .left(px(c as f32 * step))
-                    .top(px(r as f32 * step))
-                    .child(t.metrics(unit, gap))
-            }),
-        )
+
+        let reduced = Theme::get(cx).reduced_motion;
+        let exit = self
+            .turnstile
+            .then(|| window.use_keyed_state(self.id.clone(), cx, |_, _| Exit { tapped: None, generation: 0 }));
+        let leaving = exit.as_ref().and_then(|e| {
+            let e = e.read(cx);
+            e.tapped.map(|t| (t, e.generation))
+        });
+        let schedule = leaving.map(|(t, _)| exit_schedule(&positions, t).0);
+        // Exit length per tapped tile, so each click knows when to launch.
+        let totals: Vec<Duration> = if exit.is_some() {
+            (0..positions.len()).map(|t| exit_schedule(&positions, t).1).collect()
+        } else {
+            Vec::new()
+        };
+
+        let tiles = self.tiles.into_iter().zip(positions).enumerate().map(|(ix, (mut t, (c, r)))| {
+            // Route the click through the exit: animate first, launch after.
+            if let (Some(exit), Some(launch)) = (exit.clone(), t.on_click.take()) {
+                let total = totals[ix];
+                t.on_click = Some(Rc::new(move |e: &ClickEvent, window: &mut Window, cx: &mut App| {
+                    if reduced {
+                        return launch(e, window, cx);
+                    }
+                    let started = exit.update(cx, |x, cx| {
+                        if x.tapped.is_some() {
+                            return false;
+                        }
+                        x.tapped = Some(ix);
+                        x.generation += 1;
+                        cx.notify();
+                        true
+                    });
+                    if !started {
+                        return;
+                    }
+                    let (e, launch, exit) = (e.clone(), launch.clone(), exit.clone());
+                    window
+                        .spawn(cx, async move |cx| {
+                            cx.background_executor().timer(total).await;
+                            cx.update(|window, cx| {
+                                // Re-arm first, so a grid that stays on screen comes back.
+                                exit.update(cx, |x, cx| {
+                                    x.tapped = None;
+                                    cx.notify();
+                                });
+                                launch(&e, window, cx);
+                            })
+                            .ok();
+                        })
+                        .detach();
+                }));
+            }
+
+            let (x, y) = (c as f32 * step, r as f32 * step);
+            let cell = div().absolute().left(px(x)).top(px(y)).child(t.metrics(unit, gap));
+            match (&schedule, leaving) {
+                (Some(delays), Some((_, generation))) => {
+                    let delay = delays[ix];
+                    let mut animations = Vec::with_capacity(2);
+                    if !delay.is_zero() {
+                        animations.push(Animation::new(delay));
+                    }
+                    let delayed = animations.len() == 1;
+                    animations.push(Animation::new(EXIT_TILE).with_easing(ease_in_quad));
+                    cell.with_animations(
+                        ElementId::from((SharedString::from(format!("tile-exit-{generation}")), ix)),
+                        animations,
+                        move |el, phase, t| {
+                            // The 2D silhouette of swinging away on the left edge:
+                            // accelerate leftwards while fading out.
+                            let t = if delayed && phase == 0 { 0. } else { t };
+                            el.left(px(x - 140. * t)).opacity(1. - t)
+                        },
+                    )
+                    .into_any_element()
+                }
+                _ => cell.into_any_element(),
+            }
+        });
+
+        div().relative().flex_none().w(px(width)).h(px(height)).children(tiles.collect::<Vec<_>>())
     }
 }
 
@@ -436,6 +566,36 @@ mod tests {
         assert_eq!(Small.pixels(99., 12.), (99., 99.));
         assert_eq!(Medium.pixels(99., 12.), (210., 210.));
         assert_eq!(Wide.pixels(99., 12.), (432., 210.));
+    }
+
+    #[test]
+    fn exit_waves_in_reading_order_and_the_tapped_tile_goes_last() {
+        let sizes = [Wide, Medium, Small, Small, Small, Small];
+        let positions = pack(&sizes, 4);
+        let tapped = 1;
+        let (delays, total) = exit_schedule(&positions, tapped);
+        let others: Vec<usize> = (0..sizes.len()).filter(|&i| i != tapped).collect();
+        assert!(others.iter().all(|&i| delays[i] < delays[tapped]), "{delays:?}");
+        // Reading order: a tile higher up (or further left on the same row) never leaves later.
+        for &a in &others {
+            for &b in &others {
+                let (pa, pb) = (positions[a], positions[b]);
+                if (pa.1, pa.0) < (pb.1, pb.0) {
+                    assert!(delays[a] <= delays[b], "{a} {pa:?} vs {b} {pb:?}");
+                }
+            }
+        }
+        assert_eq!(total, delays[tapped] + EXIT_TILE);
+    }
+
+    #[test]
+    fn exit_stays_short_on_big_grids() {
+        let sizes = vec![Small; 60];
+        let positions = pack(&sizes, 4);
+        let (_, total) = exit_schedule(&positions, 30);
+        assert!(total <= EXIT_WAVE_MAX + EXIT_HOLD + EXIT_TILE, "{total:?}");
+        let (delays, total) = exit_schedule(&[(0, 0)], 0);
+        assert_eq!((delays[0], total), (Duration::ZERO, EXIT_TILE));
     }
 
     #[test]

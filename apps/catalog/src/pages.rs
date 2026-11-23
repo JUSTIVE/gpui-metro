@@ -178,7 +178,7 @@ impl Page {
                 "The start-screen tile: a flat accent square with its name in the corner and an optional count. Four footprints (small, medium, wide, large) plus custom front faces and live back faces that periodically slide up, the WP hub-tile peek. Tap the mail tile to bump its count."
             }
             Page::TileGrid => {
-                "TileGrid packs tiles the way the start screen did: 2×2 blocks, medium and larger tiles aligned to block corners, small tiles filling quadrants first-fit. Flip the switch for the six-column \"show more tiles\" layout; the same tiles re-pack at a smaller unit."
+                "TileGrid packs tiles the way the start screen did: 2×2 blocks, medium and larger tiles aligned to block corners, small tiles filling quadrants first-fit. Flip the switch for the six-column \"show more tiles\" layout; the same tiles re-pack at a smaller unit. With turnstile on, tapping people or outlook swings the tiles out (the tapped one last) and then opens a panorama or a pivot."
             }
             Page::Pivot => {
                 "A pivot shows one pane under a row of huge lower-case headers. The selected header always leads and the rest wrap around it, dimmed. Tap a header or swipe horizontally on a trackpad; the pane turnstiles in from the direction you moved."
@@ -296,10 +296,11 @@ tile("people", TileSize::Wide)
             }
             Page::TileGrid => {
                 r#"tile_grid()
+    .turnstile(true) // tiles swing out, then on_click runs
     .columns(if more { 6 } else { 4 })
     .metrics(unit, gap)
-    .tile(tile("phone", TileSize::Medium)...)
-    .tile(tile("calendar", TileSize::Wide)...)
+    .tile(tile("people", TileSize::Wide)
+        .on_click(|_, _, cx| open_people_hub(cx)))
     .tile(tile("wifi", TileSize::Small)...)"#
             }
             Page::Pivot => {

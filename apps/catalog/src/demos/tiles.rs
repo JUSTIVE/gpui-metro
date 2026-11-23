@@ -1,16 +1,18 @@
 //! Tiles in every size and face, and a packed start screen.
 
 use gpui::{
-    AnyElement, Context, Hsla, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div,
-    px,
+    AnyElement, Context, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, div, px,
 };
 use gpui_metro::{
-    Accent, Icon, PAGE_MARGIN, TILE_GAP, TILE_UNIT, TextStyle, Tile, TileSize, text,
+    Accent, Icon, PAGE_MARGIN, TILE_GAP, TILE_UNIT, TextStyle, Tile, TileSize,
+    motion::{Direction, enter_div},
+    round_button, text,
     theme::{LIGHT, size},
     tile, tile_grid, toggle_switch,
 };
 
-use super::{DemoState, caption, on, page, stack, tap};
+use super::{DemoState, caption, navigation, on, page, stack, tap};
 use crate::{app::Catalog, phone::SCREEN_W};
 
 /// A calendar-style front face: big date, next appointment.
@@ -107,8 +109,24 @@ pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     )
 }
 
-/// The start screen's tiles, in pin order.
-fn start_tiles(mail_count: u32) -> Vec<Tile> {
+/// An app opened from the start-screen demo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Launched {
+    /// outlook: a pivot of mail folders.
+    Pivot,
+    /// people: a panorama hub.
+    Panorama,
+}
+
+fn launch(cx: &Context<Catalog>, app: Launched) -> impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static {
+    tap(cx, move |s| {
+        s.launched = Some(app);
+        s.launches += 1;
+    })
+}
+
+/// The start screen's tiles, in pin order. people and outlook launch apps.
+fn start_tiles(mail_count: u32, cx: &Context<Catalog>) -> Vec<Tile> {
     vec![
         tile("start-phone", TileSize::Medium).title("phone").icon(Icon::Phone).count(1),
         tile("start-sms", TileSize::Small).icon(Icon::Mail).count(3),
@@ -119,8 +137,13 @@ fn start_tiles(mail_count: u32) -> Vec<Tile> {
             .title("people")
             .icon(Icon::People)
             .back(back_text("ben, kristin, anna", "3 new posts"))
-            .period(11.),
-        tile("start-mail", TileSize::Medium).title("outlook").icon(Icon::Mail).count(mail_count),
+            .period(11.)
+            .on_click(launch(cx, Launched::Panorama)),
+        tile("start-mail", TileSize::Medium)
+            .title("outlook")
+            .icon(Icon::Mail)
+            .count(mail_count)
+            .on_click(launch(cx, Launched::Pivot)),
         tile("start-calendar", TileSize::Medium)
             .title("calendar")
             .icon(Icon::Calendar)
@@ -143,6 +166,43 @@ fn start_tiles(mail_count: u32) -> Vec<Tile> {
 }
 
 pub fn grid_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
+    let key = |side: &str| ElementId::from((SharedString::from(format!("start-{side}")), s.launches));
+    if let Some(app) = s.launched {
+        let body = match app {
+            Launched::Pivot => navigation::pivot_page(s, cx),
+            Launched::Panorama => navigation::panorama_page(s, cx),
+        };
+        let back = tap(cx, |s| {
+            s.launched = None;
+            s.launches += 1;
+        });
+        return div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(enter_div(key("app"), Direction::Forward, 0, div().flex_1().min_h_0().child(body), cx))
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(12.))
+                    .px(px(PAGE_MARGIN))
+                    .py(px(10.))
+                    .child(round_button("start-back", Icon::Back).diameter(40.).on_click(back))
+                    .child(caption("back to start")),
+            )
+            .into_any_element();
+    }
+    let start = start_screen(s, cx);
+    if s.launches == 0 {
+        return start;
+    }
+    // Coming back from an app: the start screen swings back in from the left.
+    enter_div(key("return"), Direction::Backward, 0, div().size_full().child(start), cx)
+}
+
+fn start_screen(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     let (columns, gap) = if s.more_tiles { (6, 8.) } else { (4, TILE_GAP) };
     let width = SCREEN_W - 2. * PAGE_MARGIN;
     let unit = (width - (columns - 1) as f32 * gap) / columns as f32;
@@ -162,7 +222,14 @@ pub fn grid_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                 .labels("6 columns", "4 columns")
                 .on_change(on(cx, |s, v| s.more_tiles = v)),
         )
-        .child(tile_grid().columns(columns).metrics(unit, gap).tiles(start_tiles(s.mail_count)))
+        .child(caption("tap people (panorama) or outlook (pivot) to launch"))
+        .child(
+            tile_grid()
+                .turnstile(true)
+                .columns(columns)
+                .metrics(unit, gap)
+                .tiles(start_tiles(s.mail_count, cx)),
+        )
         .child(text(TextStyle::Small, format!("{columns} columns · unit {unit:.0} px · gap {gap:.0} px")))
         .into_any_element()
 }
