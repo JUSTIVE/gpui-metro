@@ -151,7 +151,7 @@ mod tests {
     fn every_icon_is_embedded() {
         let a = Assets::new();
         for i in Icon::ALL {
-            let bytes = a.load(i.path()).unwrap().expect(i.name());
+            let bytes = a.load(i.path()).unwrap().unwrap_or_else(|| panic!("{} missing", i.name()));
             assert!(bytes.starts_with(b"<svg"), "{} is not svg", i.name());
         }
         assert_eq!(a.list("metro/icons/").unwrap().len(), Icon::ALL.len());

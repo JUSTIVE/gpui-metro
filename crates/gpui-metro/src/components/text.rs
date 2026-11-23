@@ -63,7 +63,7 @@ impl TextStyle {
     }
 
     /// An empty `Div` carrying this style; add children or more styling.
-    pub fn div(self, cx: &App) -> Div {
+    pub fn styled(self, cx: &App) -> Div {
         div()
             .font_family(Theme::font(cx))
             .text_size(px(self.size()))
@@ -106,7 +106,7 @@ impl RenderOnce for Text {
             (_, true) => SharedString::from(self.content.to_lowercase()),
             _ => self.content,
         };
-        let mut el = self.style.div(cx);
+        let mut el = self.style.styled(cx);
         if let Some(c) = self.color {
             el = el.text_color(c);
         }

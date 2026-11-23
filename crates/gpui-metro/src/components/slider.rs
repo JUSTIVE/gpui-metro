@@ -94,10 +94,11 @@ impl RenderOnce for Slider {
                     let (bounds_m, dragging_m) = (bounds.clone(), dragging.clone());
                     let f = on_change.clone();
                     window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
-                        if phase == DispatchPhase::Bubble && dragging_m.get() {
-                            if let Some(b) = bounds_m.get() {
-                                f(value_at(e.position.x, b, step), window, cx);
-                            }
+                        if phase == DispatchPhase::Bubble
+                            && dragging_m.get()
+                            && let Some(b) = bounds_m.get()
+                        {
+                            f(value_at(e.position.x, b, step), window, cx);
                         }
                     });
                     let dragging_u = dragging.clone();

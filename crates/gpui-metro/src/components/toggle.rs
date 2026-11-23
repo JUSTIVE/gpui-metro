@@ -15,6 +15,7 @@ use crate::{
     theme::size,
 };
 
+pub type SelectRadio = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type ToggleHandler = Rc<dyn Fn(bool, &mut Window, &mut App)>;
 
 /// The WP8 toggle switch: a header, the On/Off word, and the rectangular track.
@@ -214,7 +215,7 @@ pub struct RadioButton {
     selected: bool,
     label: Option<SharedString>,
     disabled: bool,
-    on_select: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    on_select: Option<SelectRadio>,
 }
 
 pub fn radio_button(id: impl Into<ElementId>, selected: bool) -> RadioButton {

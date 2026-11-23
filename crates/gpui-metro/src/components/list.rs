@@ -299,7 +299,7 @@ pub struct ListPicker {
     header: Option<SharedString>,
     items: Vec<SharedString>,
     selected: usize,
-    on_select: Option<Rc<dyn Fn(usize, &mut Window, &mut App)>>,
+    on_select: Option<crate::pivot::SelectHandler>,
 }
 
 pub fn list_picker<S: Into<SharedString>>(

@@ -131,7 +131,7 @@ pub struct Tile {
     phase: f32,
     unit: f32,
     gap: f32,
-    on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
+    on_click: Option<crate::button::ClickHandler>,
 }
 
 pub fn tile(id: impl Into<ElementId>, size: TileSize) -> Tile {
