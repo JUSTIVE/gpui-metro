@@ -1,7 +1,9 @@
 //! Type is the interface. These are the Metro text styles as `Div`s so they
 //! compose with the rest of the fluent API.
 
-use gpui::{App, Div, FontWeight, Hsla, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, px, relative};
+use gpui::{App, Div, FontWeight, Hsla, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, relative};
+
+use crate::theme::u;
 
 use crate::theme::{LIGHT, SEMIBOLD, SEMILIGHT, Theme, size};
 
@@ -66,7 +68,7 @@ impl TextStyle {
     pub fn styled(self, cx: &App) -> Div {
         div()
             .font_family(Theme::font(cx))
-            .text_size(px(self.size()))
+            .text_size(u(self.size()))
             .font_weight(self.weight())
             .line_height(relative(if self.size() > 30. { 1.1 } else { 1.3 }))
             .text_color(self.color(cx))

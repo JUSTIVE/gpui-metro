@@ -6,8 +6,10 @@ use std::rc::Rc;
 
 use gpui::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder,
 };
+
+use crate::theme::u;
 
 use crate::{
     Icon, Theme,
@@ -69,19 +71,19 @@ impl RenderOnce for MessageBox {
             .id("msgbox-band")
             .w_full()
             .bg(p.chrome)
-            .px(px(PAGE_MARGIN))
-            .pt(px(40.))
-            .pb(px(20.))
+            .px(u(PAGE_MARGIN))
+            .pt(u(40.))
+            .pb(u(20.))
             .flex()
             .flex_col()
-            .gap(px(14.))
+            .gap(u(14.))
             .font_family(Theme::font(cx))
             .text_color(p.foreground)
             .on_click(|_, _, cx| cx.stop_propagation())
-            .child(div().text_size(px(size::LARGE)).font_weight(SEMIBOLD).child(self.title))
-            .when_some(self.message, |el, m| el.child(div().text_size(px(size::MEDIUM)).child(m)))
+            .child(div().text_size(u(size::LARGE)).font_weight(SEMIBOLD).child(self.title))
+            .when_some(self.message, |el, m| el.child(div().text_size(u(size::MEDIUM)).child(m)))
             .children(self.content)
-            .child(div().flex().gap(px(12.)).pt(px(8.)).children(buttons));
+            .child(div().flex().gap(u(12.)).pt(u(8.)).children(buttons));
 
         div()
             .id(self.id)
@@ -132,14 +134,14 @@ impl RenderOnce for Toast {
             .w_full()
             .flex()
             .items_center()
-            .gap(px(10.))
-            .px(px(16.))
-            .h(px(60.))
+            .gap(u(10.))
+            .px(u(16.))
+            .h(u(60.))
             .bg(p.accent)
             .font_family(Theme::font(cx))
-            .text_size(px(size::NORMAL))
+            .text_size(u(size::NORMAL))
             .text_color(ink)
-            .children(self.icon.map(|i| i.render(px(22.), ink)))
+            .children(self.icon.map(|i| i.render(u(22.), ink)))
             .child(div().font_weight(SEMIBOLD).flex_none().child(self.title))
             .when_some(self.message, |el, m| {
                 el.child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(m))

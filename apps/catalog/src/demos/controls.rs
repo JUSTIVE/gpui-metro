@@ -1,6 +1,7 @@
 //! Buttons, selection controls, slider, list picker and text box.
 
-use gpui::{AnyElement, Context, ParentElement, Styled, Window, div, px};
+use gpui::{AnyElement, Context, ParentElement, Styled, Window, div};
+use gpui_metro::u;
 use gpui_metro::{
     Accent, Icon, TextStyle, Theme, button, check_box, hyperlink, list_picker, radio_button, round_button, slider,
     text, text_box, toggle_switch,
@@ -11,7 +12,7 @@ use crate::app::Catalog;
 
 /// A horizontal row of controls at their natural width.
 fn row() -> gpui::Div {
-    div().flex().flex_wrap().items_center().gap(px(12.))
+    div().flex().flex_wrap().items_center().gap(u(12.))
 }
 
 pub fn buttons(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
@@ -46,7 +47,7 @@ pub fn buttons(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
 
 pub fn round_buttons(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     let transport = row()
-        .gap(px(20.))
+        .gap(u(20.))
         .child(round_button("rb-previous", Icon::Previous))
         .child(
             round_button("rb-play", if s.playing { Icon::Pause } else { Icon::Play })
@@ -63,7 +64,7 @@ pub fn round_buttons(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
             .child(caption("filled = toggled on"))
             .child(
                 row()
-                    .gap(px(20.))
+                    .gap(u(20.))
                     .child(
                         round_button("rb-favorite", Icon::Favorite)
                             .filled(s.favorite)
@@ -74,7 +75,7 @@ pub fn round_buttons(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
             .child(caption("sizes · disabled"))
             .child(
                 row()
-                    .gap(px(20.))
+                    .gap(u(20.))
                     .child(round_button("rb-36", Icon::Add).diameter(36.))
                     .child(round_button("rb-48", Icon::Add))
                     .child(round_button("rb-64", Icon::Add).diameter(64.))

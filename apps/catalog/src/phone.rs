@@ -1,7 +1,8 @@
 //! The device the demos run in: a 480×800 screen in a bezel, with the
 //! system tray on top and the three hardware buttons below.
 
-use gpui::{App, IntoElement, ParentElement, Styled, div, px};
+use gpui::{App, IntoElement, ParentElement, Styled, div};
+use gpui_metro::u;
 use gpui_metro::{Icon, Theme, system_tray};
 
 use crate::demos::{Demo, DemoState};
@@ -23,8 +24,8 @@ pub fn frame(state: &DemoState, demo: Demo, cx: &App) -> impl IntoElement {
         .flex()
         .flex_col()
         .flex_none()
-        .w(px(SCREEN_W))
-        .h(px(SCREEN_H))
+        .w(u(SCREEN_W))
+        .h(u(SCREEN_H))
         .bg(p.background)
         .text_color(p.foreground)
         .font_family(Theme::font(cx))
@@ -36,16 +37,16 @@ pub fn frame(state: &DemoState, demo: Demo, cx: &App) -> impl IntoElement {
         .flex()
         .justify_around()
         .items_center()
-        .h(px(56.))
-        .children([Icon::Back, Icon::Home, Icon::Search].map(|i| i.render(px(22.), p.subtle)));
+        .h(u(56.))
+        .children([Icon::Back, Icon::Home, Icon::Search].map(|i| i.render(u(22.), p.subtle)));
 
     div()
         .flex()
         .flex_col()
         .flex_none()
-        .px(px(14.))
-        .pt(px(30.))
-        .rounded(px(34.))
+        .px(u(14.))
+        .pt(u(30.))
+        .rounded(u(34.))
         .bg(p.chrome)
         .border_1()
         .border_color(p.disabled.opacity(0.5))

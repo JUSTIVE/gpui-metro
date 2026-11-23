@@ -1,6 +1,7 @@
 //! Determinate bar, indeterminate dots, and the ring.
 
-use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, div};
+use gpui_metro::u;
 use gpui_metro::{TextStyle, progress_bar, progress_dots, progress_ring, slider, text, toggle_switch};
 
 use super::{DemoState, caption, on, page, stack};
@@ -25,7 +26,7 @@ pub fn dots(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     let feed = div()
         .flex()
         .flex_col()
-        .gap(px(6.))
+        .gap(u(6.))
         .child(text(TextStyle::Large, "what's new"))
         .child(text(TextStyle::Subtle, if s.loading { "fetching your feed…" } else { "up to date" }));
     page(
@@ -34,7 +35,7 @@ pub fn dots(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
             .child(if s.loading {
                 progress_dots("pd-feed").into_any_element()
             } else {
-                div().h(px(4.)).into_any_element()
+                div().h(u(4.)).into_any_element()
             })
             .child(feed)
             .child(toggle_switch("pd-loading", s.loading).header("loading").on_change(on(cx, |s, v| s.loading = v)))
@@ -52,15 +53,15 @@ pub fn ring() -> AnyElement {
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(40.))
+                    .gap(u(40.))
                     .children(sizes.into_iter().enumerate().map(|(ix, d)| progress_ring(("ring", ix)).diameter(d))),
             )
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(16.))
-                    .pt(px(20.))
+                    .gap(u(16.))
+                    .pt(u(20.))
                     .child(progress_ring("ring-inline").diameter(32.))
                     .child(text(TextStyle::Normal, "signing in…")),
             ),

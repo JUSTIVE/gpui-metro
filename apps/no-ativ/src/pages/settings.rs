@@ -1,7 +1,8 @@
 //! Settings: the classic Windows Phone theme page, plus the one foundry
 //! setting the phone owns (how early reagents start warning).
 
-use gpui::{App, div, prelude::*, px};
+use gpui::{App, div, prelude::*};
+use gpui_metro::u;
 use gpui_metro::{Accent, Mode, TextStyle, Theme, list_picker, slider, text, toggle_switch};
 
 use crate::nav::{Nav, PageView};
@@ -16,14 +17,14 @@ fn accent_grid(nav: &Nav, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_wrap()
-        .gap(px(10.))
+        .gap(u(10.))
         .children(Accent::ALL.iter().map(|&accent| {
             div()
                 .id(accent.name())
-                .size(px(SWATCH))
+                .size(u(SWATCH))
                 .bg(accent.color())
                 .cursor_pointer()
-                .when(accent == current, |el| el.border(px(3.)).border_color(ring))
+                .when(accent == current, |el| el.border(u(3.)).border_color(ring))
                 .active(|s| s.opacity(0.7))
                 .on_click(nav.click(move |_, _, cx| Theme::set_accent(accent, cx)))
         }))
@@ -37,7 +38,7 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
     let facility = &store.data;
 
     let body = scroll("settings")
-        .gap(px(14.))
+        .gap(u(14.))
         .child(
             nav.feather(
                 "settings",
@@ -61,7 +62,7 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(8.))
+                    .gap(u(8.))
                     .child(subtle("accent colour", cx))
                     .child(accent_grid(nav, cx))
                     .child(text(TextStyle::Accent, theme.accent.name())),

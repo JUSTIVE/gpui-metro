@@ -5,9 +5,11 @@ use std::f32::consts::TAU;
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, App, ElementId, IntoElement, ParentElement, RenderOnce, Styled, Window, div, px,
+    Animation, AnimationExt, App, ElementId, IntoElement, ParentElement, RenderOnce, Styled, Window, div,
     relative,
 };
+
+use crate::theme::u;
 
 use crate::{Theme, motion::ease_in_out_cubic};
 
@@ -65,7 +67,7 @@ impl RenderOnce for ProgressBar {
             Some(v) => div()
                 .relative()
                 .w_full()
-                .h(px(4.))
+                .h(u(4.))
                 .bg(p.accent.opacity(0.25))
                 .child(div().absolute().left_0().top_0().bottom_0().w(relative(v)).bg(p.accent))
                 .into_any_element(),
@@ -74,14 +76,14 @@ impl RenderOnce for ProgressBar {
                 div()
                     .relative()
                     .w_full()
-                    .h(px(4.))
+                    .h(u(4.))
                     .overflow_hidden()
                     .with_animation(self.id, Animation::new(CYCLE).repeat(), move |el, t| {
                         let mut el = el;
                         for i in 0..DOTS {
                             if let Some(x) = dot_position(i, t) {
                                 el = el.child(
-                                    div().absolute().top_0().left(relative(x)).size(px(4.)).bg(accent),
+                                    div().absolute().top_0().left(relative(x)).size(u(4.)).bg(accent),
                                 );
                             }
                         }
@@ -120,7 +122,7 @@ impl RenderOnce for ProgressRing {
         div()
             .relative()
             .flex_none()
-            .size(px(d))
+            .size(u(d))
             .with_animation(self.id, Animation::new(Duration::from_millis(2400)).repeat(), move |el, t| {
                 let mut el = el;
                 for i in 0..6 {
@@ -130,7 +132,7 @@ impl RenderOnce for ProgressRing {
                     let angle = ease_in_out_cubic(lap) * TAU - TAU / 4.;
                     let (x, y) = (r + r * angle.cos(), r + r * angle.sin());
                     el = el.child(
-                        div().absolute().left(px(x)).top(px(y)).size(px(dot)).rounded_full().bg(accent),
+                        div().absolute().left(u(x)).top(u(y)).size(u(dot)).rounded_full().bg(accent),
                     );
                 }
                 el

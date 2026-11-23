@@ -1,6 +1,7 @@
 //! List item variants and the a–z contacts jump list.
 
-use gpui::{AnyElement, Context, IntoElement, ParentElement, SharedString, Styled, div, px};
+use gpui::{AnyElement, Context, IntoElement, ParentElement, SharedString, Styled, div};
+use gpui_metro::u;
 use gpui_metro::{ALPHABET, Accent, Icon, Leading, ListGroup, Theme, jump_list, list_item, page_header, progress_ring};
 
 use super::{DemoState, caption, page, stack, tap};
@@ -8,7 +9,7 @@ use crate::app::Catalog;
 
 pub fn list_items(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     let p = Theme::palette(cx);
-    let chevron = || Icon::ChevronRight.render(px(22.), p.subtle);
+    let chevron = || Icon::ChevronRight.render(u(22.), p.subtle);
     let choices = ["cellular data", "wi-fi", "bluetooth"];
     let selectable = choices.into_iter().enumerate().map(|(ix, title)| {
         let on = s.selected_row == Some(ix);
@@ -16,7 +17,7 @@ pub fn list_items(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
             .subtitle(if on { "selected" } else { "tap to select" })
             .on_click(tap(cx, move |s| s.selected_row = Some(ix)));
         if on {
-            item = item.trailing(Icon::Check.render(px(24.), p.accent));
+            item = item.trailing(Icon::Check.render(u(24.), p.accent));
         } else {
             item = item.subtle_subtitle();
         }
@@ -26,7 +27,7 @@ pub fn list_items(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     page(
         "list item",
         stack()
-            .gap(px(4.))
+            .gap(u(4.))
             .child(caption("title only"))
             .child(list_item("li-title", "ringtones + sounds"))
             .child(caption("accent subtitle · subtle subtitle"))

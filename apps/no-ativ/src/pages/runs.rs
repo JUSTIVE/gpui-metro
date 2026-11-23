@@ -1,6 +1,7 @@
 //! Runs: a pivot over the ledger, and the run detail with harvest.
 
-use gpui::{App, Hsla, div, prelude::*, px, relative};
+use gpui::{App, Hsla, div, prelude::*, relative};
+use gpui_metro::u;
 use gpui_metro::{
     Accent, Icon, Leading, TextStyle, Theme, app_bar, list_item, pivot, progress_bar, text,
 };
@@ -107,9 +108,9 @@ fn growth_curve(run: &Run, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_end()
-        .gap(px(3.))
-        .h(px(56.))
-        .pt(px(8.))
+        .gap(u(3.))
+        .h(u(56.))
+        .pt(u(8.))
         .children(
             series
                 .into_iter()
@@ -143,7 +144,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
     let growth_block = div()
         .flex()
         .flex_col()
-        .gap(px(6.))
+        .gap(u(6.))
         .child(heading("growth", cx))
         .child(progress_bar("growth", growth(run)))
         .child(subtle(
@@ -160,7 +161,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
     let facts = div()
         .flex()
         .flex_wrap()
-        .pt(px(12.))
+        .pt(u(12.))
         .child(half(fact("vessel", run.vessel.clone())))
         .child(half(fact(
             "instrument",
@@ -196,7 +197,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
             div()
                 .flex()
                 .justify_between()
-                .py(px(4.))
+                .py(u(4.))
                 .child(
                     div()
                         .flex()
@@ -218,10 +219,10 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
         div()
             .flex()
             .flex_col()
-            .p(px(10.))
+            .p(u(10.))
             .bg(p.chrome)
             .font_family("Menlo")
-            .text_size(px(12.))
+            .text_size(u(12.))
             .text_color(p.subtle)
             .children(run_log(run).into_iter().map(|l| div().child(l))),
     );

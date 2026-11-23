@@ -1,6 +1,7 @@
 //! Telemetry: a panorama with one section per zone. Values tick live.
 
-use gpui::{App, Div, div, prelude::*, px, relative};
+use gpui::{App, Div, div, prelude::*, relative};
+use gpui_metro::u;
 use gpui_metro::{TextStyle, Theme, panorama, text, theme::size};
 
 use crate::data::{Sensor, SensorState};
@@ -19,16 +20,16 @@ fn sensor_card(sensor: &Sensor, cx: &App) -> Div {
         .w(relative(0.5))
         .flex()
         .flex_col()
-        .pb(px(18.))
+        .pb(u(18.))
         .child(text(TextStyle::Small, sensor.kind.as_str()))
         .child(
             div()
                 .flex()
                 .items_baseline()
-                .gap(px(6.))
+                .gap(u(6.))
                 .child(
                     div()
-                        .text_size(px(size::EXTRA_LARGE + 6.))
+                        .text_size(u(size::EXTRA_LARGE + 6.))
                         .font_weight(gpui_metro::theme::LIGHT)
                         .text_color(tone)
                         .child(reading(sensor)),
@@ -48,7 +49,7 @@ fn sensor_card(sensor: &Sensor, cx: &App) -> Div {
         )
         .child(
             div()
-                .text_size(px(size::SMALL - 2.))
+                .text_size(u(size::SMALL - 2.))
                 .text_color(p.disabled)
                 .child(sensor.code.clone()),
         )

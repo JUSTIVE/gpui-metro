@@ -13,7 +13,8 @@ mod start;
 mod strains;
 mod telemetry;
 
-use gpui::{App, Div, Hsla, SharedString, Stateful, div, prelude::*, px};
+use gpui::{App, Div, Hsla, SharedString, Stateful, div, prelude::*};
+use gpui_metro::u;
 use gpui_metro::{Accent, PAGE_MARGIN, TextStyle, page_header, text};
 
 use crate::nav::{Nav, Page, PageView};
@@ -58,8 +59,8 @@ pub fn scroll(id: impl Into<SharedString>) -> Stateful<Div> {
         .id(id.into())
         .size_full()
         .overflow_y_scroll()
-        .px(px(PAGE_MARGIN))
-        .pb(px(32.))
+        .px(u(PAGE_MARGIN))
+        .pb(u(32.))
         .flex()
         .flex_col()
 }
@@ -79,7 +80,7 @@ pub fn fact(label: &'static str, value: impl Into<SharedString>) -> Div {
     div()
         .flex()
         .flex_col()
-        .pb(px(10.))
+        .pb(u(10.))
         .child(text(TextStyle::Small, label))
         .child(text(TextStyle::Large, value))
 }
@@ -87,8 +88,8 @@ pub fn fact(label: &'static str, value: impl Into<SharedString>) -> Div {
 /// A group heading inside a page body.
 pub fn heading(label: impl Into<SharedString>, cx: &App) -> Div {
     div()
-        .pt(px(18.))
-        .pb(px(6.))
+        .pt(u(18.))
+        .pb(u(6.))
         .child(TextStyle::GroupHeader.styled(cx).child(label.into()))
 }
 

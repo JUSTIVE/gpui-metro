@@ -6,8 +6,10 @@ use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt, App, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder,
 };
+
+use crate::theme::u;
 
 use crate::{
     Icon, Theme,
@@ -86,13 +88,13 @@ impl RenderOnce for ToggleSwitch {
                 .child(
                     div()
                         .absolute()
-                        .top(px(4.))
-                        .bottom(px(4.))
-                        .left(px(4.))
-                        .w(px((x - 2.).max(0.)))
+                        .top(u(4.))
+                        .bottom(u(4.))
+                        .left(u(4.))
+                        .w(u((x - 2.).max(0.)))
                         .bg(fill),
                 )
-                .child(div().absolute().top_0().bottom_0().left(px(x)).w(px(THUMB_W)).bg(fg))
+                .child(div().absolute().top_0().bottom_0().left(u(x)).w(u(THUMB_W)).bg(fg))
         };
         let thumb = if generation == 0 || reduced {
             layer(end).into_any_element()
@@ -114,10 +116,10 @@ impl RenderOnce for ToggleSwitch {
             .id(self.id)
             .flex()
             .flex_col()
-            .gap(px(4.))
+            .gap(u(4.))
             .font_family(font)
             .when_some(self.header, |el, h| {
-                el.child(div().text_size(px(size::NORMAL)).text_color(p.subtle).child(h))
+                el.child(div().text_size(u(size::NORMAL)).text_color(p.subtle).child(h))
             })
             .child(
                 div()
@@ -126,15 +128,15 @@ impl RenderOnce for ToggleSwitch {
                     .justify_between()
                     .child(
                         div()
-                            .text_size(px(size::LARGE))
+                            .text_size(u(size::LARGE))
                             .text_color(fg)
                             .child(if on { self.labels.0 } else { self.labels.1 }),
                     )
                     .child(
                         div()
                             .relative()
-                            .w(px(TRACK_W))
-                            .h(px(TRACK_H))
+                            .w(u(TRACK_W))
+                            .h(u(TRACK_H))
                             .border_2()
                             .border_color(fg)
                             .child(thumb),
@@ -185,10 +187,10 @@ impl RenderOnce for CheckBox {
             .id(self.id)
             .flex()
             .items_center()
-            .gap(px(14.))
-            .py(px(6.))
+            .gap(u(14.))
+            .py(u(6.))
             .font_family(Theme::font(cx))
-            .text_size(px(size::MEDIUM))
+            .text_size(u(size::MEDIUM))
             .text_color(fg)
             .child(
                 div()
@@ -196,10 +198,10 @@ impl RenderOnce for CheckBox {
                     .flex_none()
                     .items_center()
                     .justify_center()
-                    .size(px(32.))
+                    .size(u(32.))
                     .border_2()
                     .border_color(fg)
-                    .when(checked, |el| el.child(Icon::Check.render(px(22.), fg))),
+                    .when(checked, |el| el.child(Icon::Check.render(u(22.), fg))),
             )
             .when_some(self.label, |el, l| el.child(l))
             .when(!disabled, |el| el.cursor_pointer().active(move |s| s.text_color(accent)))
@@ -247,10 +249,10 @@ impl RenderOnce for RadioButton {
             .id(self.id)
             .flex()
             .items_center()
-            .gap(px(14.))
-            .py(px(6.))
+            .gap(u(14.))
+            .py(u(6.))
             .font_family(Theme::font(cx))
-            .text_size(px(size::MEDIUM))
+            .text_size(u(size::MEDIUM))
             .text_color(fg)
             .child(
                 div()
@@ -258,11 +260,11 @@ impl RenderOnce for RadioButton {
                     .flex_none()
                     .items_center()
                     .justify_center()
-                    .size(px(32.))
+                    .size(u(32.))
                     .rounded_full()
                     .border_2()
                     .border_color(fg)
-                    .when(self.selected, |el| el.child(div().size(px(14.)).rounded_full().bg(fg))),
+                    .when(self.selected, |el| el.child(div().size(u(14.)).rounded_full().bg(fg))),
             )
             .when_some(self.label, |el, l| el.child(l))
             .when(!disabled, |el| el.cursor_pointer().active(move |s| s.text_color(accent)))

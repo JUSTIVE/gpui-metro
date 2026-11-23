@@ -1,6 +1,7 @@
 //! Shipments: cryo boxes leaving the floor, each with its stage progress.
 
-use gpui::{App, SharedString, div, prelude::*, px};
+use gpui::{App, SharedString, div, prelude::*};
+use gpui_metro::u;
 use gpui_metro::{TextStyle, Theme, pivot, progress_bar, text};
 
 use crate::data::{Shipment, ShipmentStage};
@@ -24,7 +25,7 @@ fn shipment_row(s: &Shipment, cx: &App) -> impl IntoElement {
         .children(STAGES.iter().map(|&stage| {
             let reached = stage_progress(stage) <= stage_progress(s.stage);
             div()
-                .text_size(px(11.))
+                .text_size(u(11.))
                 .text_color(if stage == s.stage {
                     p.accent
                 } else if reached {
@@ -37,11 +38,11 @@ fn shipment_row(s: &Shipment, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
-        .gap(px(4.))
-        .py(px(10.))
+        .gap(u(4.))
+        .py(u(10.))
         .child(text(TextStyle::Large, s.destination.to_lowercase()))
         .child(text(TextStyle::Accent, format!("{} · {}", s.code, s.eta)))
-        .child(div().pt(px(6.)).child(progress_bar(
+        .child(div().pt(u(6.)).child(progress_bar(
             SharedString::from(format!("ship-{}", s.id)),
             stage_progress(s.stage),
         )))
@@ -49,7 +50,7 @@ fn shipment_row(s: &Shipment, cx: &App) -> impl IntoElement {
         .child(
             div()
                 .flex()
-                .gap(px(8.))
+                .gap(u(8.))
                 .child(subtle(
                     format!(
                         "{} · {} vials · {} kg dry ice",

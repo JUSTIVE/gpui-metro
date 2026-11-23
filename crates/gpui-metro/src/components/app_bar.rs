@@ -7,8 +7,10 @@ use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt, App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div,
-    prelude::FluentBuilder, px,
+    prelude::FluentBuilder,
 };
+
+use crate::theme::u;
 
 use crate::{
     Icon, Theme,
@@ -117,13 +119,13 @@ impl RenderOnce for AppBar {
                 .flex()
                 .flex_col()
                 .items_center()
-                .w(px(76.))
-                .gap(px(4.))
+                .w(u(76.))
+                .gap(u(4.))
                 .child(rb)
                 .when(expanded, |el| {
                     el.child(
                         div()
-                            .text_size(px(size::SMALL - 2.))
+                            .text_size(u(size::SMALL - 2.))
                             .text_color(if b.disabled { p.disabled } else { p.foreground })
                             .child(SharedString::from(b.label.to_lowercase())),
                     )
@@ -137,13 +139,13 @@ impl RenderOnce for AppBar {
                 .absolute()
                 .top_0()
                 .right_0()
-                .w(px(56.))
-                .h(px(if minimized { 30. } else { 36. }))
+                .w(u(56.))
+                .h(u(if minimized { 30. } else { 36. }))
                 .flex()
                 .justify_center()
-                .pt(px(2.))
+                .pt(u(2.))
                 .cursor_pointer()
-                .child(Icon::More.render(px(26.), p.foreground))
+                .child(Icon::More.render(u(26.), p.foreground))
                 .on_click(move |_, _, cx| open.update(cx, |o, cx| {
                     *o = !*o;
                     cx.notify();
@@ -151,13 +153,13 @@ impl RenderOnce for AppBar {
         };
 
         let has_items = !self.items.is_empty();
-        let items = div().flex().flex_col().pt(px(10.)).pb(px(12.)).px(px(24.)).gap(px(14.)).children(
+        let items = div().flex().flex_col().pt(u(10.)).pb(u(12.)).px(u(24.)).gap(u(14.)).children(
             self.items.into_iter().enumerate().map(|(ix, item)| {
                 let collapse = collapse.clone();
                 let accent = p.accent;
                 div()
                     .id(("appbar-item", ix))
-                    .text_size(px(size::MEDIUM_LARGE))
+                    .text_size(u(size::MEDIUM_LARGE))
                     .text_color(p.foreground)
                     .cursor_pointer()
                     .active(move |s| s.text_color(accent))
@@ -175,15 +177,15 @@ impl RenderOnce for AppBar {
             .flex()
             .flex_col()
             .when(!minimized, |el| {
-                el.child(div().flex().justify_center().pt(px(8.)).pb(px(if expanded { 4. } else { 10. })).children(buttons))
+                el.child(div().flex().justify_center().pt(u(8.)).pb(u(if expanded { 4. } else { 10. })).children(buttons))
             })
-            .when(minimized, |el| el.h(px(30.)))
+            .when(minimized, |el| el.h(u(30.)))
             .when(expanded && has_items, |el| el.child(items));
         let body = if expanded && !reduced {
             body.with_animation(
                 "appbar-open",
                 Animation::new(Duration::from_millis(260)).with_easing(ease_out_expo),
-                |el, t| el.opacity(0.4 + 0.6 * t).mt(px(24. * (1. - t))),
+                |el, t| el.opacity(0.4 + 0.6 * t).mt(u(24. * (1. - t))),
             )
             .into_any_element()
         } else {

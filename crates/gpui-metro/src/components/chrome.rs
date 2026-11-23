@@ -1,7 +1,9 @@
 //! Phone chrome: the system tray along the top edge and the two-line page
 //! header (APPLICATION NAME over a huge lower-case page title).
 
-use gpui::{App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, prelude::FluentBuilder, px};
+use gpui::{App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, prelude::FluentBuilder};
+
+use crate::theme::u;
 
 use crate::{Icon, Theme, TextStyle, text};
 
@@ -31,11 +33,11 @@ impl RenderOnce for PageHeader {
         div()
             .flex()
             .flex_col()
-            .pt(px(12.))
-            .pb(px(20.))
-            .px(px(PAGE_MARGIN))
+            .pt(u(12.))
+            .pb(u(20.))
+            .px(u(PAGE_MARGIN))
             .when_some(self.app_title, |el, t| el.child(text(TextStyle::AppTitle, t)))
-            .child(div().ml(px(-3.)).child(text(TextStyle::Title1, self.title).lowercase()))
+            .child(div().ml(u(-3.)).child(text(TextStyle::Title1, self.title).lowercase()))
     }
 }
 
@@ -74,21 +76,21 @@ impl RenderOnce for SystemTray {
             .flex_none()
             .items_center()
             .justify_between()
-            .h(px(32.))
-            .px(px(12.))
+            .h(u(32.))
+            .px(u(12.))
             .when(!self.transparent, |el| el.bg(p.chrome))
             .child(
                 div()
                     .flex()
-                    .gap(px(6.))
+                    .gap(u(6.))
                     .items_center()
-                    .child(Icon::Signal.render(px(16.), fg))
-                    .child(Icon::Wifi.render(px(16.), fg)),
+                    .child(Icon::Signal.render(u(16.), fg))
+                    .child(Icon::Wifi.render(u(16.), fg)),
             )
             .child(
                 div()
                     .flex()
-                    .gap(px(10.))
+                    .gap(u(10.))
                     .items_center()
                     .child(
                         // Battery glyph drawn as boxes so the fill tracks the level.
@@ -97,14 +99,14 @@ impl RenderOnce for SystemTray {
                             .items_center()
                             .child(
                                 div()
-                                    .w(px(22.))
-                                    .h(px(11.))
+                                    .w(u(22.))
+                                    .h(u(11.))
                                     .border_1()
                                     .border_color(fg)
-                                    .p(px(1.5))
+                                    .p(u(1.5))
                                     .child(div().h_full().w(gpui::relative(self.battery)).bg(fg)),
                             )
-                            .child(div().w(px(2.)).h(px(5.)).bg(fg)),
+                            .child(div().w(u(2.)).h(u(5.)).bg(fg)),
                     )
                     .child(text(TextStyle::Small, self.time).color(fg)),
             )

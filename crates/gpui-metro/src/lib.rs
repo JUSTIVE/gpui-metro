@@ -22,12 +22,14 @@
 mod components;
 pub mod icons;
 pub mod motion;
+pub mod scaled;
 pub mod text_input;
 pub mod theme;
 
 pub use components::*;
 pub use icons::{Assets, Icon, icon};
-pub use theme::{Accent, Mode, Palette, Theme};
+pub use scaled::{Scaled, scaled};
+pub use theme::{Accent, Mode, Palette, Theme, u};
 
 pub use app_bar::{AppBar, AppBarMode, app_bar};
 pub use button::{Button, HyperlinkButton, RoundButton, button, hyperlink, round_button};
@@ -58,7 +60,7 @@ pub mod prelude {
     pub use crate::{
         Accent, Icon, Mode, Palette, Theme, TextStyle, TileSize, app_bar, button, check_box, hyperlink, jump_list,
         list_item, list_picker, message_box, page_header, panorama, pivot, progress_bar, progress_dots,
-        progress_ring, radio_button, round_button, slider, system_tray, text, text_box, tile, tile_grid, toast,
-        toggle_switch,
+        progress_ring, radio_button, round_button, scaled, slider, system_tray, text, text_box, tile, tile_grid,
+        toast, toggle_switch, u,
     };
 }

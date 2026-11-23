@@ -2,8 +2,9 @@
 
 use gpui::{
     AnyElement, App, Hsla, InteractiveElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, div,
-    prelude::FluentBuilder, px,
+    prelude::FluentBuilder,
 };
+use gpui_metro::u;
 use gpui_metro::{Accent, Icon, TextStyle, Theme, text, theme::size};
 
 use super::{caption, page, stack};
@@ -19,20 +20,20 @@ pub fn palette(cx: &App) -> AnyElement {
         div()
             .id(a.name())
             .relative()
-            .size(px(CELL))
+            .size(u(CELL))
             .bg(a.color())
             .cursor_pointer()
             .active(|s| s.opacity(0.8))
             .on_click(move |_, _, cx| Theme::set_accent(a, cx))
             .when(a == current, |el| {
-                el.child(div().absolute().top(px(6.)).right(px(6.)).child(Icon::Check.render(px(22.), a.ink())))
+                el.child(div().absolute().top(u(6.)).right(u(6.)).child(Icon::Check.render(u(22.), a.ink())))
             })
             .child(
                 div()
                     .absolute()
-                    .left(px(8.))
-                    .bottom(px(6.))
-                    .text_size(px(size::SMALL))
+                    .left(u(8.))
+                    .bottom(u(6.))
+                    .text_size(u(size::SMALL))
                     .text_color(a.ink())
                     .child(a.name()),
             )
@@ -56,8 +57,8 @@ pub fn palette(cx: &App) -> AnyElement {
         div()
             .flex()
             .items_center()
-            .gap(px(14.))
-            .child(div().size(px(32.)).bg(color).border_1().border_color(p.subtle))
+            .gap(u(14.))
+            .child(div().size(u(32.)).bg(color).border_1().border_color(p.subtle))
             .child(text(TextStyle::Normal, name))
     });
 
@@ -65,9 +66,9 @@ pub fn palette(cx: &App) -> AnyElement {
         "accents",
         stack()
             .child(caption(format!("{} on {} — tap a colour", current.name(), theme.mode.label())))
-            .child(div().flex().flex_wrap().gap(px(8.)).children(swatches))
+            .child(div().flex().flex_wrap().gap(u(8.)).children(swatches))
             .child(text(TextStyle::GroupHeader, "palette"))
-            .child(div().flex().flex_col().gap(px(8.)).children(rows)),
+            .child(div().flex().flex_col().gap(u(8.)).children(rows)),
     )
 }
 
@@ -103,13 +104,13 @@ pub fn icons(cx: &App) -> AnyElement {
             .flex_col()
             .items_center()
             .justify_center()
-            .gap(px(8.))
-            .w(px(CELL))
-            .h(px(92.))
-            .child(i.render(px(36.), p.foreground))
+            .gap(u(8.))
+            .w(u(CELL))
+            .h(u(92.))
+            .child(i.render(u(36.), p.foreground))
             .child(
                 div()
-                    .text_size(px(size::SMALL - 1.))
+                    .text_size(u(size::SMALL - 1.))
                     .text_color(p.subtle)
                     .child(SharedString::from(i.name().replace('_', " "))),
             )
@@ -118,6 +119,6 @@ pub fn icons(cx: &App) -> AnyElement {
         "icons",
         stack()
             .child(caption(format!("{} glyphs, tinted by text colour", Icon::ALL.len())))
-            .child(div().flex().flex_wrap().gap(px(8.)).children(cells)),
+            .child(div().flex().flex_wrap().gap(u(8.)).children(cells)),
     )
 }

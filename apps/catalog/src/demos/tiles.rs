@@ -2,8 +2,9 @@
 
 use gpui::{
     AnyElement, Context, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, div, px,
+    StatefulInteractiveElement, Styled, div,
 };
+use gpui_metro::u;
 use gpui_metro::{
     Accent, Icon, PAGE_MARGIN, TILE_GAP, TILE_UNIT, TextStyle, Tile, TileSize,
     motion::{Direction, enter_div},
@@ -23,12 +24,12 @@ fn agenda(_: TileSize, _: Hsla) -> impl IntoElement {
         .size_full()
         .flex()
         .flex_col()
-        .p(px(12.))
-        .gap(px(2.))
+        .p(u(12.))
+        .gap(u(2.))
         .text_color(ink)
-        .child(div().text_size(px(size::NORMAL)).child("dentist"))
-        .child(div().text_size(px(size::NORMAL)).opacity(0.8).child("3:30 pm · capitol hill"))
-        .child(div().absolute().right(px(12.)).bottom(px(2.)).text_size(px(size::HUGE)).font_weight(LIGHT).child("23"))
+        .child(div().text_size(u(size::NORMAL)).child("dentist"))
+        .child(div().text_size(u(size::NORMAL)).opacity(0.8).child("3:30 pm · capitol hill"))
+        .child(div().absolute().right(u(12.)).bottom(u(2.)).text_size(u(size::HUGE)).font_weight(LIGHT).child("23"))
 }
 
 /// A back face: a few lines of text over the tile colour.
@@ -38,10 +39,10 @@ fn back_text(title: &'static str, body: &'static str) -> impl FnOnce(TileSize, H
             .size_full()
             .flex()
             .flex_col()
-            .p(px(10.))
+            .p(u(10.))
             .text_color(gpui::white())
-            .child(div().text_size(px(size::MEDIUM_LARGE)).child(title))
-            .child(div().text_size(px(size::SMALL)).opacity(0.85).child(body))
+            .child(div().text_size(u(size::MEDIUM_LARGE)).child(title))
+            .child(div().text_size(u(size::SMALL)).opacity(0.85).child(body))
             .into_any_element()
     }
 }
@@ -55,8 +56,8 @@ pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     let smalls = div()
         .flex()
         .flex_wrap()
-        .w(px(TILE_UNIT * 2. + TILE_GAP))
-        .gap(px(TILE_GAP))
+        .w(u(TILE_UNIT * 2. + TILE_GAP))
+        .gap(u(TILE_GAP))
         .child(tile("tile-phone", TileSize::Small).icon(Icon::Phone).count(2))
         .child(tile("tile-camera", TileSize::Small).icon(Icon::Camera).color(Accent::Magenta.color()))
         .child(tile("tile-wifi", TileSize::Small).icon(Icon::Wifi).color(Accent::Teal.color()))
@@ -71,14 +72,14 @@ pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
         "tile",
         stack()
             .child(caption("medium · small — tap mail to add, refresh to clear"))
-            .child(div().flex().gap(px(TILE_GAP)).child(mail).child(smalls))
+            .child(div().flex().gap(u(TILE_GAP)).child(mail).child(smalls))
             .child(caption("wide · custom front face"))
             .child(tile("tile-calendar", TileSize::Wide).title("calendar").front(agenda))
             .child(caption("live · back faces peek every few seconds"))
             .child(
                 div()
                     .flex()
-                    .gap(px(TILE_GAP))
+                    .gap(u(TILE_GAP))
                     .child(
                         tile("tile-people", TileSize::Medium)
                             .title("people")
@@ -186,9 +187,9 @@ pub fn grid_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                     .flex()
                     .flex_none()
                     .items_center()
-                    .gap(px(12.))
-                    .px(px(PAGE_MARGIN))
-                    .py(px(10.))
+                    .gap(u(12.))
+                    .px(u(PAGE_MARGIN))
+                    .py(u(10.))
                     .child(round_button("start-back", Icon::Back).diameter(40.).on_click(back))
                     .child(caption("back to start")),
             )
@@ -210,12 +211,12 @@ fn start_screen(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
         .id("start-screen")
         .size_full()
         .overflow_y_scroll()
-        .px(px(PAGE_MARGIN))
-        .pt(px(16.))
-        .pb(px(40.))
+        .px(u(PAGE_MARGIN))
+        .pt(u(16.))
+        .pb(u(40.))
         .flex()
         .flex_col()
-        .gap(px(16.))
+        .gap(u(16.))
         .child(
             toggle_switch("more-tiles", s.more_tiles)
                 .header("show more tiles")

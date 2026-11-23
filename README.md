@@ -58,16 +58,24 @@ pivot item, the toggle state, or the slider value, and receives changes through
 `on_*` callbacks. Purely visual state, such as whether the app bar is expanded
 or a transition is in progress, lives inside the component.
 
+### Units
+
+Metro is specified in phone pixels. gpui-metro sizes everything in rems
+through `u(design_px)` (16 design px = 1 rem), so the result looks the same as
+px at gpui's default rem size. `scaled(factor)` renders a subtree at another
+rem size, and everything inside it shrinks or grows, text included. Size your
+own app content with `u()` as well if it should scale with the motion.
+
 ### Fidelity notes
 
 GPUI can't transform boxes or text, so Metro's 3D turnstile is *projected*:
 an element turned about the screen's left edge is drawn at the span a
-perspective camera would see. It narrows toward the hinge, and tiles also
-shrink at the far side. The content is clipped rather than reflowed
-(`motion::turn`). Timings follow the WP Toolkit: forward-in from −80° and
-back-in from 50°, both 350 ms on an exponential ease-out (exponent 6), with
-items feathered 40 ms apart. Tiles turnstile out to 90° on an ease-in, in
-reading order, with the tapped tile last.
+perspective camera would see (`motion::turn`). Pages are clipped to that
+span and really shrink through rem scaling. Tiles shrink by the perspective
+factor as they turn away. Timings follow the WP Toolkit: forward-in from
+−80° and back-in from 50°, both 350 ms on an exponential ease-out
+(exponent 6), with items feathered 40 ms apart. Tiles turnstile out to 90° on
+an ease-in, in reading order, with the tapped tile last.
 
 Pivot headers glide from where the old selection sat, and the pane slides in
 from the side you moved to. Panorama content follows the input (Shift +

@@ -1,6 +1,7 @@
 //! System tray, page header, and the turnstile entrance.
 
-use gpui::{AnyElement, App, Context, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, App, Context, IntoElement, ParentElement, Styled, div};
+use gpui_metro::u;
 use gpui_metro::{
     Icon, Leading, TextStyle, Theme, button, list_item,
     motion::{self, Direction},
@@ -85,7 +86,7 @@ pub fn motion_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     page(
         "motion",
         stack()
-            .child(div().flex().children(radios).gap(px(12.)))
+            .child(div().flex().children(radios).gap(u(12.)))
             .child(div().flex().child(
                 button("motion-replay", "replay").icon(Icon::Refresh).on_click(tap(cx, |s| s.motion_replays += 1)),
             ))

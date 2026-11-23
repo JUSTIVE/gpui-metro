@@ -7,8 +7,10 @@ use std::rc::Rc;
 use gpui::{
     App, Bounds, DispatchPhase, ElementId, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, RenderOnce, SharedString, Styled, Window, canvas, div,
-    prelude::FluentBuilder, px, relative,
+    prelude::FluentBuilder, relative,
 };
+
+use crate::theme::u;
 
 use crate::{Theme, theme::size};
 
@@ -113,20 +115,20 @@ impl RenderOnce for Slider {
             .id(self.id)
             .flex()
             .flex_col()
-            .gap(px(6.))
+            .gap(u(6.))
             .font_family(Theme::font(cx))
-            .when_some(self.header, |el, h| el.child(div().text_size(px(size::NORMAL)).text_color(p.subtle).child(h)))
+            .when_some(self.header, |el, h| el.child(div().text_size(u(size::NORMAL)).text_color(p.subtle).child(h)))
             .child(
                 div()
                     .relative()
-                    .h(px(36.))
+                    .h(u(36.))
                     .flex()
                     .items_center()
                     .child(
                         div()
                             .relative()
                             .w_full()
-                            .h(px(12.))
+                            .h(u(12.))
                             .bg(track)
                             .child(div().absolute().top_0().bottom_0().left_0().w(relative(self.value)).bg(fill)),
                     )
@@ -136,8 +138,8 @@ impl RenderOnce for Slider {
                             .top_0()
                             .bottom_0()
                             .left(relative(self.value))
-                            .ml(px(-6.))
-                            .w(px(12.))
+                            .ml(u(-6.))
+                            .w(u(12.))
                             .bg(thumb),
                     )
                     .child(measure)
@@ -156,7 +158,7 @@ impl RenderOnce for Slider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{point, size};
+    use gpui::{point, px, size};
 
     #[test]
     fn value_maps_and_snaps() {

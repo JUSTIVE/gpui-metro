@@ -10,13 +10,16 @@ use std::time::Duration;
 use gpui::{
     Animation, AnimationExt, AnyElement, App, ClickEvent, ElementId, Hsla, InteractiveElement, IntoElement,
     ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div,
-    prelude::FluentBuilder, px,
+    prelude::FluentBuilder,
 };
+
+use crate::theme::u;
 
 use crate::{
     Icon, Theme,
     chrome::PAGE_MARGIN,
     motion::{ease_in_exp6, ease_in_out_cubic, turn},
+    scaled::scaled,
     theme::size,
 };
 
@@ -236,9 +239,9 @@ impl RenderOnce for Tile {
             title.clone().map(|t| {
                 div()
                     .absolute()
-                    .left(px(8.))
-                    .bottom(px(6.))
-                    .text_size(px(size::SMALL))
+                    .left(u(8.))
+                    .bottom(u(6.))
+                    .text_size(u(size::SMALL))
                     .text_color(ink)
                     .child(t)
             })
@@ -249,7 +252,7 @@ impl RenderOnce for Tile {
             None => default_front(size, self.icon, self.count, ink),
         };
         let face = |content: AnyElement, with_label: bool| {
-            div().relative().w(px(w)).h(px(h)).flex_none().overflow_hidden().child(content).when(with_label, |el| {
+            div().relative().w(u(w)).h(u(h)).flex_none().overflow_hidden().child(content).when(with_label, |el| {
                 el.children(label())
             })
         };
@@ -264,8 +267,8 @@ impl RenderOnce for Tile {
                 div()
                     .absolute()
                     .left_0()
-                    .w(px(w))
-                    .h(px(h * 2.))
+                    .w(u(w))
+                    .h(u(h * 2.))
                     .flex()
                     .flex_col()
                     .child(face(front, true))
@@ -273,7 +276,7 @@ impl RenderOnce for Tile {
                     .with_animation(
                         ElementId::from((SharedString::from(format!("{}-peek", self.id)), 0usize)),
                         Animation::new(period).repeat(),
-                        move |el, t| el.top(px(-h * peek_offset((t + phase).fract(), slide))),
+                        move |el, t| el.top(u(-h * peek_offset((t + phase).fract(), slide))),
                     )
                     .into_any_element()
             }
@@ -284,8 +287,8 @@ impl RenderOnce for Tile {
             .id(self.id)
             .relative()
             .flex_none()
-            .w(px(w))
-            .h(px(h))
+            .w(u(w))
+            .h(u(h))
             .overflow_hidden()
             .bg(bg)
             .font_family(font)
@@ -309,10 +312,10 @@ fn default_front(size: TileSize, icon: Option<Icon>, count: Option<u32>, ink: Hs
             .flex()
             .items_center()
             .justify_center()
-            .gap(px(4.))
-            .children(icon.map(|i| i.render(px(icon_px), ink)))
+            .gap(u(4.))
+            .children(icon.map(|i| i.render(u(icon_px), ink)))
             .children(count.map(|c| {
-                div().absolute().top(px(4.)).right(px(8.)).text_size(px(size::NORMAL)).text_color(ink).child(c.to_string())
+                div().absolute().top(u(4.)).right(u(8.)).text_size(u(size::NORMAL)).text_color(ink).child(c.to_string())
             }))
             .into_any_element(),
         _ => div()
@@ -320,11 +323,11 @@ fn default_front(size: TileSize, icon: Option<Icon>, count: Option<u32>, ink: Hs
             .flex()
             .items_center()
             .justify_center()
-            .gap(px(8.))
-            .children(icon.map(|i| i.render(px(icon_px), ink)))
+            .gap(u(8.))
+            .children(icon.map(|i| i.render(u(icon_px), ink)))
             .children(count.map(|c| {
                 div()
-                    .text_size(px(size::HUGE * 0.8))
+                    .text_size(u(size::HUGE * 0.8))
                     .font_weight(crate::theme::LIGHT)
                     .text_color(ink)
                     .child(c.to_string())
@@ -502,42 +505,40 @@ impl RenderOnce for TileGrid {
                     animations.push(Animation::new(EXIT_TILE).with_easing(ease_in_exp6));
                     // Turnstile-out: every tile turns to 90° about the screen's
                     // left edge (a page margin left of the grid) and is
-                    // projected: it narrows toward the hinge and its far side
-                    // recedes. The tile inside stays full size and is cropped.
+                    // projected: it narrows toward the hinge and recedes. The
+                    // tile really shrinks by the perspective scale (rem
+                    // scaling) and is clipped to its projected width.
                     let project = move |phase: usize, t: f32| {
                         let t = if delayed && phase == 0 { 0. } else { t };
                         let r = turn(x + PAGE_MARGIN, tw, 90. * t);
-                        let h = th * (r.scale_left + r.scale_right) / 2.;
-                        (r, h)
+                        let k = (r.scale_left + r.scale_right) / 2.;
+                        (r, k, th * k)
                     };
                     let id = ElementId::from((SharedString::from(format!("tile-exit-{generation}")), ix));
-                    let body = div().absolute().left_0().w(px(tw)).h(px(th)).child(tile).with_animations(
+                    let body = scaled(1.).absolute().left_0().top_0().child(tile).with_animations(
                         id.clone(),
                         animations.clone(),
-                        move |el, phase, t| {
-                            let (_, h) = project(phase, t);
-                            el.top(px(-(th - h) / 2.))
-                        },
+                        move |el, phase, t| el.scale(project(phase, t).1),
                     );
                     div()
                         .absolute()
                         .overflow_hidden()
                         .child(body)
                         .with_animations(id, animations, move |el, phase, t| {
-                            let (r, h) = project(phase, t);
-                            el.left(px(r.left - PAGE_MARGIN))
-                                .top(px(y + (th - h) / 2.))
-                                .w(px(r.width))
-                                .h(px(h))
+                            let (r, _, h) = project(phase, t);
+                            el.left(u(r.left - PAGE_MARGIN))
+                                .top(u(y + (th - h) / 2.))
+                                .w(u(r.width))
+                                .h(u(h))
                                 .opacity(if r.width < 1. { 0. } else { 1. })
                         })
                         .into_any_element()
                 }
-                _ => div().absolute().left(px(x)).top(px(y)).child(tile).into_any_element(),
+                _ => div().absolute().left(u(x)).top(u(y)).child(tile).into_any_element(),
             }
         });
 
-        div().relative().flex_none().w(px(width)).h(px(height)).children(tiles.collect::<Vec<_>>())
+        div().relative().flex_none().w(u(width)).h(u(height)).children(tiles.collect::<Vec<_>>())
     }
 }
 

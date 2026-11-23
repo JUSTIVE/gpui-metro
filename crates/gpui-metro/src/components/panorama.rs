@@ -8,8 +8,10 @@ use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement,
-    RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
+    RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder,
 };
+
+use crate::theme::u;
 
 use crate::{
     Theme,
@@ -78,7 +80,7 @@ fn place(
     name: &str,
     motion: Motion,
     dur: Duration,
-    left: impl Fn(f32) -> gpui::Pixels + 'static,
+    left: impl Fn(f32) -> gpui::Rems + 'static,
 ) -> AnyElement {
     match motion {
         Motion::Following(pos) | Motion::Rest(pos) => layer.left(left(pos)).into_any_element(),
@@ -125,14 +127,14 @@ impl RenderOnce for Panorama {
         });
         let dur = SETTLE;
 
-        let strip_left = move |pos: f32| px(PAGE_MARGIN - pos * sw);
-        let title_left = move |pos: f32| px(PAGE_MARGIN - 6. - pos * sw * PARALLAX);
+        let strip_left = move |pos: f32| u(PAGE_MARGIN - pos * sw);
+        let title_left = move |pos: f32| u(PAGE_MARGIN - 6. - pos * sw * PARALLAX);
 
         let title = div()
             .absolute()
-            .top(px(-18.))
+            .top(u(-18.))
             .whitespace_nowrap()
-            .text_size(px(size::PANORAMA))
+            .text_size(u(size::PANORAMA))
             .font_weight(LIGHT)
             .text_color(p.foreground)
             .child(SharedString::from(self.title.to_lowercase()));
@@ -146,14 +148,14 @@ impl RenderOnce for Panorama {
                 .flex()
                 .flex_col()
                 .flex_none()
-                .w(px(sw))
-                .pr(px(PAGE_MARGIN))
+                .w(u(sw))
+                .pr(u(PAGE_MARGIN))
                 .h_full()
                 .child(
                     div()
-                        .text_size(px(size::EXTRA_LARGE + 4.))
+                        .text_size(u(size::EXTRA_LARGE + 4.))
                         .font_weight(LIGHT)
-                        .pb(px(10.))
+                        .pb(u(10.))
                         .child(SharedString::from(s.header.to_lowercase())),
                 )
                 .child(div().flex_1().min_h_0().child(s.content))
@@ -162,7 +164,7 @@ impl RenderOnce for Panorama {
                     el.cursor_pointer().on_click(move |_, w, cx| f(ix, w, cx))
                 })
         });
-        let strip = div().absolute().top(px(132.)).bottom_0().flex().children(sections);
+        let strip = div().absolute().top(u(132.)).bottom_0().flex().children(sections);
         let strip = place(strip, &key, "s", motion, dur, strip_left);
         let on_select = self.on_select;
         div()

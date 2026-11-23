@@ -6,8 +6,10 @@ use std::rc::Rc;
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement,
-    RenderOnce, SharedString, StatefulInteractiveElement, Styled, TextRun, Window, div, prelude::FluentBuilder, px,
+    RenderOnce, SharedString, StatefulInteractiveElement, Styled, TextRun, Window, div, prelude::FluentBuilder,
 };
+
+use crate::theme::u;
 
 use crate::{
     Theme, TextStyle,
@@ -122,7 +124,7 @@ impl RenderOnce for Pivot {
 
         // Headers glide: the row is laid out from where the old selection sat
         // and travels until the new one leads (Metro's pivot header motion).
-        let font_size = px(HEADER_SIZE);
+        let font_size = u(HEADER_SIZE);
         let labels: Vec<SharedString> = self.headers.iter().map(|h| SharedString::from(h.to_lowercase())).collect();
         let font = gpui::Font { weight: LIGHT, ..gpui::font(Theme::font(cx)) };
         let widths: Vec<f32> = labels
@@ -136,7 +138,7 @@ impl RenderOnce for Pivot {
                     underline: None,
                     strikethrough: None,
                 };
-                f32::from(window.text_system().shape_line(l.clone(), font_size, &[run], None).width)
+                f32::from(window.text_system().shape_line(l.clone(), gpui::px(HEADER_SIZE), &[run], None).width)
             })
             .collect();
         let reduced = Theme::get(cx).reduced_motion;
@@ -161,13 +163,13 @@ impl RenderOnce for Pivot {
                     el.on_click(move |_, w, cx| f(ix, w, cx))
                 })
         };
-        let row = div().relative().flex().gap(px(HEADER_GAP)).children(order.into_iter().enumerate().map(header));
+        let row = div().relative().flex().gap(u(HEADER_GAP)).children(order.into_iter().enumerate().map(header));
         let row: AnyElement = match glide {
             Some(g) => row
                 .with_animation(
                     generation_id(&format!("{key}-h"), generation),
                     Animation::new(GLIDE).with_easing(ease_out_exp6),
-                    move |el, t| el.left(px(lerp(g.from, g.to, t))),
+                    move |el, t| el.left(u(lerp(g.from, g.to, t))),
                 )
                 .into_any_element(),
             None => row.into_any_element(),
@@ -189,16 +191,16 @@ impl RenderOnce for Pivot {
                     .flex()
                     .flex_col()
                     .flex_none()
-                    .pt(px(12.))
-                    .px(px(PAGE_MARGIN))
+                    .pt(u(12.))
+                    .px(u(PAGE_MARGIN))
                     .when_some(self.title, |el, t| el.child(text(TextStyle::AppTitle, t)))
-                    .child(div().ml(px(-2.)).overflow_hidden().child(row)),
+                    .child(div().ml(u(-2.)).overflow_hidden().child(row)),
             )
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
-                    .pt(px(8.))
+                    .pt(u(8.))
                     .child(if generation == 0 {
                         div().size_full().child(content).into_any_element()
                     } else {

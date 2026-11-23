@@ -1,8 +1,9 @@
 //! Pivot, panorama and the application bar.
 
 use gpui::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, px,
+    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div,
 };
+use gpui_metro::u;
 use gpui_metro::{
     Accent, AppBarMode, Icon, PAGE_MARGIN, TILE_GAP, TextStyle, Theme, TileSize, app_bar, list_item, page_header,
     panorama, pivot, text,
@@ -101,7 +102,7 @@ pub fn pivot_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
             }
             item
         });
-    let pane = div().id("pivot-pane").size_full().overflow_y_scroll().px(px(PAGE_MARGIN)).children(rows);
+    let pane = div().id("pivot-pane").size_full().overflow_y_scroll().px(u(PAGE_MARGIN)).children(rows);
     pivot("demo-pivot", FOLDERS, folder)
         .title("outlook")
         .on_select(on(cx, |s, ix| s.pivot = ix))
@@ -112,7 +113,7 @@ pub fn pivot_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
 pub fn panorama_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     let p = Theme::palette(cx);
     let big = |label: &'static str| {
-        div().text_size(px(size::EXTRA_LARGE)).font_weight(SEMILIGHT).line_height(px(52.)).child(label)
+        div().text_size(u(size::EXTRA_LARGE)).font_weight(SEMILIGHT).line_height(u(52.)).child(label)
     };
     let collection = div()
         .flex()
@@ -121,10 +122,10 @@ pub fn panorama_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
         .child(big("videos"))
         .child(big("podcasts"))
         .child(big("radio"))
-        .child(div().pt(px(12.)).child(text(TextStyle::Subtle, "shift + scroll, swipe, or tap the peeking section")));
+        .child(div().pt(u(12.)).child(text(TextStyle::Subtle, "shift + scroll, swipe, or tap the peeking section")));
 
     let colors = [Accent::Orange, Accent::Magenta, Accent::Teal, Accent::Lime, Accent::Violet, Accent::Cobalt];
-    let history = div().flex().flex_wrap().gap(px(TILE_GAP)).children(colors.into_iter().enumerate().map(|(ix, a)| {
+    let history = div().flex().flex_wrap().gap(u(TILE_GAP)).children(colors.into_iter().enumerate().map(|(ix, a)| {
         tile(("pano-tile", ix), TileSize::Medium).color(a.color()).icon(Icon::Play).metrics(85., TILE_GAP)
     }));
 
@@ -166,7 +167,7 @@ pub fn app_bar_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
         .child(page_header("app bar").app_title("metro catalog"))
         .child(
             stack()
-                .px(px(PAGE_MARGIN))
+                .px(u(PAGE_MARGIN))
                 .child(
                     toggle_switch("app-bar-minimized", s.app_bar_minimized)
                         .header("minimized mode")

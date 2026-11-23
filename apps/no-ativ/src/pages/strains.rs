@@ -1,6 +1,7 @@
 //! Strains: an a–z jump list, and the strain detail with its lineage.
 
-use gpui::{App, SharedString, div, prelude::*, px, relative};
+use gpui::{App, SharedString, div, prelude::*, relative};
+use gpui_metro::u;
 use gpui_metro::{ALPHABET, Leading, ListGroup, jump_list, list_item, page_header, progress_bar};
 
 use crate::data::{Strain, StrainStatus};
@@ -85,7 +86,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
     let fitness = div()
         .flex()
         .flex_col()
-        .gap(px(6.))
+        .gap(u(6.))
         .child(heading("fitness", cx))
         .child(progress_bar("fitness", strain.fitness as f32 / 100.))
         .child(subtle(
@@ -105,7 +106,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
                 None => subtle("founder strain — no parent on record", cx).into_any_element(),
             })
             .when(!children.is_empty(), |el| {
-                el.child(subtle(format!("passaged into {}", children.len()), cx).pt(px(6.)))
+                el.child(subtle(format!("passaged into {}", children.len()), cx).pt(u(6.)))
                     .children(children.into_iter().map(|c| strain_item("child", c, nav)))
             })
     };
@@ -154,7 +155,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
                         format!("{} · {} · frozen {}", s.code, s.form.as_str(), s.frozen_at),
                         cx,
                     )
-                    .py(px(2.))
+                    .py(u(2.))
                 }))
         });
 

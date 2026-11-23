@@ -1,7 +1,9 @@
 //! The Metro text box: a translucent field that turns solid white with black
 //! ink when it has focus, framed by a 2 px border that takes the accent.
 
-use gpui::{App, Entity, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, prelude::FluentBuilder, px};
+use gpui::{App, Entity, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, prelude::FluentBuilder};
+
+use crate::theme::u;
 
 use crate::{Theme, text_input::TextInput, theme::size};
 
@@ -42,19 +44,19 @@ impl RenderOnce for TextBox {
         div()
             .flex()
             .flex_col()
-            .gap(px(4.))
+            .gap(u(4.))
             .font_family(Theme::font(cx))
-            .when_some(self.header, |el, h| el.child(div().text_size(px(size::NORMAL)).text_color(p.subtle).child(h)))
+            .when_some(self.header, |el, h| el.child(div().text_size(u(size::NORMAL)).text_color(p.subtle).child(h)))
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .h(px(48.))
-                    .px(px(10.))
+                    .h(u(48.))
+                    .px(u(10.))
                     .bg(bg)
                     .border_2()
                     .border_color(border)
-                    .text_size(px(size::MEDIUM))
+                    .text_size(u(size::MEDIUM))
                     .text_color(ink)
                     .child(self.input),
             )

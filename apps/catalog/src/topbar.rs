@@ -2,8 +2,9 @@
 
 use gpui::{
     App, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div,
-    prelude::FluentBuilder, px,
+    prelude::FluentBuilder,
 };
+use gpui_metro::u;
 use gpui_metro::{
     Accent, Icon, Mode, TextStyle, Theme, check_box, text,
     theme::{LIGHT, SEMIBOLD, size},
@@ -20,8 +21,8 @@ pub fn render(cx: &mut Context<Catalog>) -> impl IntoElement + use<> {
         let on = m == mode;
         div()
             .id(m.label())
-            .px(px(6.))
-            .text_size(px(size::MEDIUM))
+            .px(u(6.))
+            .text_size(u(size::MEDIUM))
             .text_color(if on { p.foreground } else { p.subtle })
             .when(on, |el| el.font_weight(SEMIBOLD))
             .cursor_pointer()
@@ -34,7 +35,7 @@ pub fn render(cx: &mut Context<Catalog>) -> impl IntoElement + use<> {
         let on = a == accent;
         div()
             .id(a.name())
-            .size(px(22.))
+            .size(u(22.))
             .flex()
             .items_center()
             .justify_center()
@@ -43,24 +44,24 @@ pub fn render(cx: &mut Context<Catalog>) -> impl IntoElement + use<> {
             .when(on, |el| el.border_2().border_color(p.foreground))
             .hover(|s| s.opacity(0.8))
             .on_click(move |_, _, cx: &mut App| Theme::set_accent(a, cx))
-            .when(on, |el| el.child(Icon::Check.render(px(14.), a.ink())))
+            .when(on, |el| el.child(Icon::Check.render(u(14.), a.ink())))
     });
 
     div()
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(28.))
-        .h(px(64.))
-        .px(px(24.))
+        .gap(u(28.))
+        .h(u(64.))
+        .px(u(24.))
         .border_b_1()
         .border_color(p.disabled.opacity(0.3))
         .child(
             div()
                 .flex()
                 .items_baseline()
-                .gap(px(10.))
-                .child(div().text_size(px(size::EXTRA_LARGE)).font_weight(LIGHT).child("metro"))
+                .gap(u(10.))
+                .child(div().text_size(u(size::EXTRA_LARGE)).font_weight(LIGHT).child("metro"))
                 .child(text(TextStyle::Subtle, "gpui component catalog")),
         )
         .child(div().flex_1())
@@ -76,9 +77,9 @@ pub fn render(cx: &mut Context<Catalog>) -> impl IntoElement + use<> {
             div()
                 .flex()
                 .items_center()
-                .gap(px(10.))
+                .gap(u(10.))
                 .child(text(TextStyle::Small, accent.name()))
-                .child(div().flex().gap(px(3.)).children(swatches)),
+                .child(div().flex().gap(u(3.)).children(swatches)),
         )
         .child(
             check_box("reduced-motion", reduced)

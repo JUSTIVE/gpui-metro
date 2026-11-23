@@ -5,8 +5,10 @@ use std::rc::Rc;
 
 use gpui::{
     AnyElement, App, ClickEvent, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder,
 };
+
+use crate::theme::u;
 
 use crate::{
     Icon, Theme,
@@ -93,9 +95,9 @@ impl RenderOnce for ListItem {
         let sq = p.accent_ink;
         let leading = self.leading.map(|l| {
             let bg = self.leading_color.unwrap_or(p.accent);
-            div().flex().flex_none().items_center().justify_center().size(px(62.)).bg(bg).child(match l {
-                Leading::Icon(i) => i.render(px(32.), sq).into_any_element(),
-                Leading::Glyph(g) => div().text_size(px(size::LARGE)).text_color(sq).child(g).into_any_element(),
+            div().flex().flex_none().items_center().justify_center().size(u(62.)).bg(bg).child(match l {
+                Leading::Icon(i) => i.render(u(32.), sq).into_any_element(),
+                Leading::Glyph(g) => div().text_size(u(size::LARGE)).text_color(sq).child(g).into_any_element(),
                 Leading::Element(e) => e,
             })
         });
@@ -103,8 +105,8 @@ impl RenderOnce for ListItem {
             .id(self.id)
             .flex()
             .items_center()
-            .gap(px(14.))
-            .py(px(8.))
+            .gap(u(14.))
+            .py(u(8.))
             .font_family(Theme::font(cx))
             .children(leading)
             .child(
@@ -115,9 +117,9 @@ impl RenderOnce for ListItem {
                     .min_w_0()
                     .child(
                         div()
-                            .text_size(px(size::LARGE + 3.))
+                            .text_size(u(size::LARGE + 3.))
                             .font_weight(SEMILIGHT)
-                            .line_height(px(34.))
+                            .line_height(u(34.))
                             .text_color(p.foreground)
                             .overflow_hidden()
                             .whitespace_nowrap()
@@ -127,13 +129,13 @@ impl RenderOnce for ListItem {
                     .when_some(self.subtitle, |el, s| {
                         el.child(
                             div()
-                                .text_size(px(size::NORMAL))
+                                .text_size(u(size::NORMAL))
                                 .text_color(if self.subtitle_accent { p.accent } else { p.subtle })
                                 .child(s),
                         )
                     })
                     .when_some(self.detail, |el, s| {
-                        el.child(div().text_size(px(size::NORMAL)).text_color(p.subtle).child(s))
+                        el.child(div().text_size(u(size::NORMAL)).text_color(p.subtle).child(s))
                     }),
             )
             .children(self.trailing)
@@ -214,12 +216,12 @@ impl RenderOnce for JumpList {
                 .id(("jump-header", ix))
                 .flex()
                 .items_end()
-                .size(px(52.))
-                .p(px(6.))
-                .mt(px(14.))
-                .mb(px(6.))
+                .size(u(52.))
+                .p(u(6.))
+                .mt(u(14.))
+                .mb(u(6.))
                 .bg(p.accent)
-                .text_size(px(size::LARGE + 3.))
+                .text_size(u(size::LARGE + 3.))
                 .text_color(p.accent_ink)
                 .cursor_pointer()
                 .child(key)
@@ -234,11 +236,11 @@ impl RenderOnce for JumpList {
             .size_full()
             .overflow_y_scroll()
             .track_scroll(&scroll)
-            .px(px(PAGE_MARGIN))
+            .px(u(PAGE_MARGIN))
             .children(self.groups.into_iter().enumerate().map(|(ix, g)| {
                 div().flex().flex_col().child(header(ix, g.key)).children(g.items)
             }))
-            .child(div().h(px(80.)));
+            .child(div().h(u(80.)));
 
         let grid = grid_open.then(|| {
             let cells = keys.iter().cloned().enumerate().map(|(ix, key)| {
@@ -250,10 +252,10 @@ impl RenderOnce for JumpList {
                     .id(("jump-key", ix))
                     .flex()
                     .items_end()
-                    .size(px(96.))
-                    .p(px(8.))
+                    .size(u(96.))
+                    .p(u(8.))
                     .bg(if enabled { p.accent } else { p.chrome })
-                    .text_size(px(size::EXTRA_LARGE + 6.))
+                    .text_size(u(size::EXTRA_LARGE + 6.))
                     .font_weight(LIGHT)
                     .text_color(if enabled { p.accent_ink } else { p.disabled })
                     .child(key)
@@ -282,7 +284,7 @@ impl RenderOnce for JumpList {
                     "jump-grid-in",
                     Direction::Down,
                     0,
-                    div().flex().flex_wrap().gap(px(10.)).p(px(PAGE_MARGIN)).pt(px(40.)).children(cells),
+                    div().flex().flex_wrap().gap(u(10.)).p(u(PAGE_MARGIN)).pt(u(40.)).children(cells),
                     cx,
                 ))
         });
@@ -340,8 +342,8 @@ impl RenderOnce for ListPicker {
                 let open_state = open_state.clone();
                 div()
                     .id(("picker-item", ix))
-                    .px(px(10.))
-                    .py(px(6.))
+                    .px(u(10.))
+                    .py(u(6.))
                     .text_color(if ix == selected { p.accent } else { p.foreground })
                     .cursor_pointer()
                     .child(item)
@@ -360,8 +362,8 @@ impl RenderOnce for ListPicker {
             div().child(
                 div()
                     .id("picker-current")
-                    .px(px(10.))
-                    .py(px(6.))
+                    .px(u(10.))
+                    .py(u(6.))
                     .cursor_pointer()
                     .child(self.items.get(selected).cloned().unwrap_or_default())
                     .on_click(move |_, _, cx| open_state.update(cx, |o, cx| {
@@ -376,17 +378,17 @@ impl RenderOnce for ListPicker {
             .id(self.id)
             .flex()
             .flex_col()
-            .gap(px(4.))
+            .gap(u(4.))
             .font_family(Theme::font(cx))
-            .when_some(self.header, |el, h| el.child(div().text_size(px(size::NORMAL)).text_color(p.subtle).child(h)))
+            .when_some(self.header, |el, h| el.child(div().text_size(u(size::NORMAL)).text_color(p.subtle).child(h)))
             .child(
                 div()
                     .border_2()
                     .border_color(if open { p.accent } else { p.border })
                     .bg(if open { p.background } else { p.input.opacity(0.2) })
-                    .text_size(px(size::MEDIUM))
+                    .text_size(u(size::MEDIUM))
                     .text_color(p.foreground)
-                    .py(px(2.))
+                    .py(u(2.))
                     .child(field),
             )
             .when(open, |el| el.on_mouse_down_out(move |_, _, cx| close.update(cx, |o, cx| {

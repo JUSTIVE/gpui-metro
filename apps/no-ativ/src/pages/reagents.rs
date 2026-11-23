@@ -1,6 +1,7 @@
 //! Reagents: every lot with its shelf life, expiring and expired stock toned.
 
-use gpui::{App, Hsla, div, prelude::*, px};
+use gpui::{App, Hsla, div, prelude::*};
+use gpui_metro::u;
 use gpui_metro::{TextStyle, Theme, pivot, progress_bar, text};
 
 use crate::data::{LotState, ReagentLot, to_fixed};
@@ -26,8 +27,8 @@ fn lot_row(lot: &ReagentLot, state: LotState, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
-        .gap(px(4.))
-        .py(px(10.))
+        .gap(u(4.))
+        .py(u(10.))
         .child(text(TextStyle::Large, lot.name.clone()))
         .child(subtle(
             format!(
@@ -36,7 +37,7 @@ fn lot_row(lot: &ReagentLot, state: LotState, cx: &App) -> impl IntoElement {
             ),
             cx,
         ))
-        .child(div().pt(px(4.)).child(progress_bar(
+        .child(div().pt(u(4.)).child(progress_bar(
             gpui::SharedString::from(format!("shelf-{}", lot.id)),
             shelf,
         )))

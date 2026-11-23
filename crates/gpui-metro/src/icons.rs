@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use gpui::{AssetSource, Hsla, Pixels, SharedString, Styled, Svg, svg};
+use gpui::{AbsoluteLength, AssetSource, Hsla, SharedString, Styled, Svg, svg};
 
 macro_rules! icons {
     ($($variant:ident => $file:literal),+ $(,)?) => {
@@ -85,14 +85,15 @@ icons! {
 
 impl Icon {
     /// An `svg()` element for this glyph at `size`, tinted `color`.
-    pub fn render(self, size: impl Into<Pixels>, color: Hsla) -> Svg {
-        let size = size.into();
+    /// `size` takes px or rems (`gpui_metro::u(22.)` scales with [`crate::Scaled`]).
+    pub fn render(self, size: impl Into<AbsoluteLength>, color: Hsla) -> Svg {
+        let size: AbsoluteLength = size.into();
         svg().path(self.path()).size(size).flex_none().text_color(color)
     }
 }
 
 /// Shorthand for [`Icon::render`].
-pub fn icon(icon: Icon, size: impl Into<Pixels>, color: Hsla) -> Svg {
+pub fn icon(icon: Icon, size: impl Into<AbsoluteLength>, color: Hsla) -> Svg {
     icon.render(size, color)
 }
 

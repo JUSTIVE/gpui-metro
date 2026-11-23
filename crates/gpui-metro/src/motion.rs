@@ -4,9 +4,10 @@
 //! swinging about a vertical hinge on the screen's left edge. GPUI can't
 //! transform boxes or text, so the turn is projected instead: a flat element
 //! rotated by θ about the hinge, seen through a perspective camera, covers a
-//! narrower span that hugs the hinge. [`turn`] computes that span, and
-//! [`enter`] clips the element to it without reflowing its contents, so a
-//! page reads as swinging in edge-first rather than sliding or fading.
+//! narrower span that hugs the hinge. [`turn`] computes that span; [`enter`]
+//! clips the element to it and really shrinks its contents (rem scaling via
+//! [`crate::Scaled`], text included), so a page reads as swinging in
+//! edge-first rather than sliding or fading.
 //!
 //! Timings follow the Windows Phone Toolkit's `TurnstileTransition`:
 //! forward-in swings from −80° in 350 ms on an exponential ease-out
@@ -15,11 +16,14 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, App, ElementId, IntoElement, ParentElement, SharedString, Styled, Window, div, px,
+    prelude::FluentBuilder,
+    Animation, AnimationExt, App, ElementId, IntoElement, ParentElement, SharedString, Styled, Window, div,
     relative,
 };
 
-use crate::{Theme, chrome::PAGE_MARGIN};
+use crate::theme::u;
+
+use crate::{Theme, chrome::PAGE_MARGIN, scaled::scaled};
 
 /// Metro's curve: everything decelerates hard into place (exponential out).
 pub fn ease_out_expo(t: f32) -> f32 {
@@ -105,6 +109,13 @@ fn page_turn(degrees: f32) -> (f32, f32) {
     ((t.width / PAGE_CONTENT_WIDTH).clamp(0., 1.), t.left - PAGE_MARGIN)
 }
 
+/// How much a turned page's contents shrink. A true projection squeezes
+/// only horizontally; rem scaling is uniform, so the page is scaled partway
+/// toward its projected width and the clip does the rest.
+pub fn content_scale(width_fraction: f32) -> f32 {
+    0.55 + 0.45 * width_fraction.clamp(0., 1.)
+}
+
 /// Turnstile-in: `child` swings in about the left edge, after
 /// `index * FEATHER` (the feather: list rows follow one another). Re-plays
 /// whenever `id` changes, so key it by what the content represents.
@@ -145,7 +156,7 @@ pub fn enter_div(
             .relative()
             .with_animations(id, animations, move |el, phase, t| {
                 let t = progress(phase, t);
-                el.top(px(-24. * (1. - t))).opacity(t)
+                el.top(u(-24. * (1. - t))).opacity(t)
             })
             .into_any_element();
     }
@@ -155,25 +166,31 @@ pub fn enter_div(
 
     // The clip keeps the wrapper's own sizing in its parent's layout…
     let mut clip = div().relative().overflow_hidden();
+    let fills_height;
     {
         let (src, dst) = (wrapper.style(), clip.style());
+        fills_height = src.size.height.is_some();
         dst.size.height = src.size.height;
         dst.min_size.height = src.min_size.height;
         dst.flex_grow = src.flex_grow;
         dst.flex_shrink = src.flex_shrink;
         dst.flex_basis = src.flex_basis;
     }
-    // …and narrows toward the hinge, while the content inside stays at full
-    // width (1 / fraction of the clip) so nothing reflows mid-turn. Both run
-    // the same timeline, so they stay in step frame for frame.
-    let content = wrapper.with_animations(id.clone(), animations.clone(), move |el, phase, t| {
+    // …and narrows toward the hinge. Inside it, the content renders at
+    // rem scale `s` in a box `s` × its natural width, so it shrinks as a
+    // whole and nothing reflows. Both layers share one timeline, so they
+    // stay in step frame for frame.
+    let content = scaled(1.).relative().w_full().when(fills_height, |el| el.h_full()).child(wrapper.size_full());
+    let content = content.with_animations(id.clone(), animations.clone(), move |el, phase, t| {
         let (f, _) = fraction(phase, t);
-        el.w(relative(1. / f.max(0.02)))
+        let s = content_scale(f);
+        let el = el.scale(s).w(relative(s / f.max(0.02))).top(relative((1. - s) / 2.));
+        if fills_height { el.h(relative(s)) } else { el }
     });
     clip.child(content)
         .with_animations(id, animations, move |el, phase, t| {
             let (f, offset) = fraction(phase, t);
-            el.w(relative(f.max(0.02))).ml(px(offset)).opacity(if f < 0.04 { 0. } else { 1. })
+            el.w(relative(f.max(0.02))).ml(u(offset)).opacity(if f < 0.04 { 0. } else { 1. })
         })
         .into_any_element()
 }

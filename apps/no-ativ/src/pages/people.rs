@@ -1,6 +1,7 @@
 //! People: the roster, the alumni, and what each role may do.
 
-use gpui::{App, SharedString, div, prelude::*, px};
+use gpui::{App, SharedString, div, prelude::*};
+use gpui_metro::u;
 use gpui_metro::{Leading, TextStyle, list_item, pivot, text};
 
 use crate::data::{Member, ROLES};
@@ -65,7 +66,7 @@ pub fn render(selected: usize, store: &Store, nav: &Nav, cx: &App) -> PageView {
                 div()
                     .flex()
                     .flex_col()
-                    .py(px(8.))
+                    .py(u(8.))
                     .child(text(
                         TextStyle::Large,
                         format!("{} · {count}", role.name.to_lowercase()),

@@ -1,7 +1,8 @@
 //! The start screen: one live tile per destination, each showing a real
 //! reading from the store.
 
-use gpui::{App, Hsla, div, prelude::*, px};
+use gpui::{App, Hsla, div, prelude::*};
+use gpui_metro::u;
 use gpui_metro::{Accent, Icon, TileSize, theme::size, tile, tile_grid};
 
 use crate::data::{LotState, SensorState};
@@ -23,19 +24,19 @@ fn back(
             .size_full()
             .flex()
             .flex_col()
-            .p(px(10.))
-            .pb(px(26.))
-            .gap(px(2.))
+            .p(u(10.))
+            .pb(u(26.))
+            .gap(u(2.))
             .text_color(gpui::white())
             .child(
                 div()
-                    .text_size(px(big))
-                    .line_height(px(big + 4.))
+                    .text_size(u(big))
+                    .line_height(u(big + 4.))
                     .child(headline),
             )
             .children(lines.into_iter().map(|l| {
                 div()
-                    .text_size(px(size::SMALL))
+                    .text_size(u(size::SMALL))
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
@@ -210,8 +211,8 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
             div()
                 .flex()
                 .justify_center()
-                .pt(px(30.))
-                .pb(px(48.))
+                .pt(u(30.))
+                .pb(u(48.))
                 .child(grid),
         ),
     )

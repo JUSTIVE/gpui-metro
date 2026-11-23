@@ -13,8 +13,9 @@ mod tiles;
 
 use gpui::{
     AnyElement, App, AppContext, ClickEvent, Context, ElementId, Entity, InteractiveElement, IntoElement,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div,
 };
+use gpui_metro::u;
 use gpui_metro::{PAGE_MARGIN, TextInput, TextStyle, motion::Direction, page_header, text};
 
 use crate::{app::Catalog, pages::Page};
@@ -174,8 +175,8 @@ fn page(title: &'static str, body: impl IntoElement) -> AnyElement {
                 .flex_1()
                 .min_h_0()
                 .overflow_y_scroll()
-                .px(px(PAGE_MARGIN))
-                .pb(px(28.))
+                .px(u(PAGE_MARGIN))
+                .pb(u(28.))
                 .child(body),
         )
         .into_any_element()
@@ -183,7 +184,7 @@ fn page(title: &'static str, body: impl IntoElement) -> AnyElement {
 
 /// A vertical stack with the standard gap between demo rows.
 fn stack() -> gpui::Div {
-    div().flex().flex_col().gap(px(18.))
+    div().flex().flex_col().gap(u(18.))
 }
 
 /// A small subtle label over a demo row.

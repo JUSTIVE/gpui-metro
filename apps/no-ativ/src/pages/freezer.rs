@@ -1,6 +1,7 @@
 //! Freezer: occupancy per rack and box.
 
-use gpui::{App, SharedString, div, prelude::*, px};
+use gpui::{App, SharedString, div, prelude::*};
+use gpui_metro::u;
 use gpui_metro::{TextStyle, progress_bar, text};
 
 use crate::nav::{Nav, PageView};
@@ -30,11 +31,11 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
             div()
                 .flex()
                 .items_center()
-                .gap(px(12.))
-                .py(px(5.))
+                .gap(u(12.))
+                .py(u(5.))
                 .child(
                     div()
-                        .w(px(36.))
+                        .w(u(36.))
                         .child(text(TextStyle::Normal, b.label.clone())),
                 )
                 .child(div().flex_1().child(progress_bar(
@@ -43,7 +44,7 @@ pub fn render(store: &Store, nav: &Nav, cx: &App) -> PageView {
                 )))
                 .child(
                     div()
-                        .w(px(56.))
+                        .w(u(56.))
                         .flex()
                         .justify_end()
                         .child(subtle(format!("{used}/{}", b.slots.len()), cx)),

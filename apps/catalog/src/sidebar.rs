@@ -2,8 +2,9 @@
 
 use gpui::{
     Context, Entity, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div,
-    prelude::FluentBuilder, px,
+    prelude::FluentBuilder,
 };
+use gpui_metro::u;
 use gpui_metro::{
     TextInput, TextStyle, Theme, text, text_box,
     theme::{SEMILIGHT, size},
@@ -43,14 +44,14 @@ pub fn render(
         div()
             .flex()
             .flex_col()
-            .pb(px(14.))
-            .child(div().pb(px(4.)).child(text(TextStyle::GroupHeader, g.name())))
+            .pb(u(14.))
+            .child(div().pb(u(4.)).child(text(TextStyle::GroupHeader, g.name())))
             .children(pages.into_iter().map(|page| {
                 let on = page == selected;
                 div()
                     .id(page.name())
-                    .py(px(3.))
-                    .text_size(px(size::MEDIUM_LARGE))
+                    .py(u(3.))
+                    .text_size(u(size::MEDIUM_LARGE))
                     .font_weight(SEMILIGHT)
                     .text_color(if on { p.accent } else { p.foreground })
                     .cursor_pointer()
@@ -67,19 +68,19 @@ pub fn render(
         .flex()
         .flex_col()
         .flex_none()
-        .w(px(250.))
+        .w(u(250.))
         .h_full()
         .border_r_1()
         .border_color(p.disabled.opacity(0.3))
-        .child(div().px(px(20.)).pt(px(18.)).pb(px(12.)).child(text_box(search)))
+        .child(div().px(u(20.)).pt(u(18.)).pb(u(12.)).child(text_box(search)))
         .child(
             div()
                 .id("sidebar-scroll")
                 .flex_1()
                 .min_h_0()
                 .overflow_y_scroll()
-                .px(px(20.))
-                .pb(px(24.))
+                .px(u(20.))
+                .pb(u(24.))
                 .children(sections)
                 .when(empty, |el| el.child(text(TextStyle::Subtle, "no components match"))),
         )

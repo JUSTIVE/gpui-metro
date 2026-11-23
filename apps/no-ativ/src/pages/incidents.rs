@@ -1,7 +1,8 @@
 //! Incidents: a pivot by status, the incident detail, and the form that files
 //! a new one.
 
-use gpui::{App, Hsla, SharedString, Window, div, prelude::*, px, relative};
+use gpui::{App, Hsla, SharedString, Window, div, prelude::*, relative};
+use gpui_metro::u;
 use gpui_metro::{
     Icon, TextStyle, Theme, app_bar, button, check_box, list_item, list_picker, pivot, text,
     text_box, toggle_switch,
@@ -87,7 +88,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
     let summary = div()
         .flex()
         .flex_col()
-        .gap(px(4.))
+        .gap(u(4.))
         .child(text(TextStyle::Large, incident.title.clone()))
         .child(
             text(
@@ -104,7 +105,7 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
     let facts = div()
         .flex()
         .flex_wrap()
-        .pt(px(14.))
+        .pt(u(14.))
         .child(half(fact("area", incident.area.as_str())))
         .child(half(fact("owner", incident.owner.clone())))
         .child(half(fact("opened", incident.opened.clone())))
@@ -148,9 +149,9 @@ pub fn detail(id: &str, store: &Store, nav: &Nav, cx: &App) -> PageView {
         .children(incident.timeline.iter().map(|e| {
             div()
                 .flex()
-                .gap(px(12.))
-                .py(px(6.))
-                .child(div().w(px(3.)).flex_none().bg(p.accent))
+                .gap(u(12.))
+                .py(u(6.))
+                .child(div().w(u(3.)).flex_none().bg(p.accent))
                 .child(
                     div()
                         .flex()
@@ -268,7 +269,7 @@ pub fn form(form: &IncidentForm, store: &Store, nav: &Nav, cx: &App) -> PageView
         .collect();
 
     let fields = scroll("incident-form")
-        .gap(px(18.))
+        .gap(u(18.))
         .child(nav.feather("form", 0, text_box(&form.title).header("title"), cx))
         .child(
             nav.feather(
@@ -297,7 +298,7 @@ pub fn form(form: &IncidentForm, store: &Store, nav: &Nav, cx: &App) -> PageView
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(8.))
+                    .gap(u(8.))
                     .child(
                         toggle_switch("link-run", form.link_run)
                             .header("link to a run")

@@ -3,8 +3,9 @@
 
 use gpui::{
     AppContext, Context, Entity, FontWeight, IntoElement, ParentElement, Render, SharedString, Styled, Subscription,
-    Window, div, prelude::*, px,
+    Window, div, prelude::*,
 };
+use gpui_metro::u;
 use gpui_metro::{
     InputEvent, TextInput, TextStyle, Theme,
     motion::{self, Direction},
@@ -62,29 +63,29 @@ impl Catalog {
         let heading = div()
             .flex()
             .flex_col()
-            .gap(px(6.))
+            .gap(u(6.))
             .child(text(TextStyle::AppTitle, page.group().name()).color(p.accent))
-            .child(div().text_size(px(size::HUGE)).font_weight(LIGHT).line_height(px(64.)).child(page.name()))
-            .child(div().max_w(px(860.)).text_size(px(size::NORMAL)).text_color(p.subtle).child(page.description()));
+            .child(div().text_size(u(size::HUGE)).font_weight(LIGHT).line_height(u(64.)).child(page.name()))
+            .child(div().max_w(u(860.)).text_size(u(size::NORMAL)).text_color(p.subtle).child(page.description()));
 
         let snippet = div()
             .flex()
             .flex_col()
             .flex_1()
-            .min_w(px(260.))
-            .max_w(px(520.))
-            .gap(px(10.))
+            .min_w(u(260.))
+            .max_w(u(520.))
+            .gap(u(10.))
             .child(text(TextStyle::GroupHeader, "usage"))
             .child(
                 div()
-                    .p(px(18.))
+                    .p(u(18.))
                     .bg(p.chrome)
                     .font_family(MONO)
-                    .text_size(px(13.))
+                    .text_size(u(13.))
                     .font_weight(FontWeight::NORMAL)
                     .text_color(p.foreground)
                     .children(
-                        page.snippet().lines().map(|line| div().h(px(20.)).whitespace_nowrap().child(line.to_string())),
+                        page.snippet().lines().map(|line| div().h(u(20.)).whitespace_nowrap().child(line.to_string())),
                     ),
             );
 
@@ -92,10 +93,10 @@ impl Catalog {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(28.))
-                .px(px(40.))
-                .pt(px(28.))
-                .pb(px(48.))
+                .gap(u(28.))
+                .px(u(40.))
+                .pt(u(28.))
+                .pb(u(48.))
                 .child(motion::enter(
                     SharedString::from(format!("heading-{}", page.name())),
                     Direction::Forward,
@@ -103,7 +104,7 @@ impl Catalog {
                     heading,
                     cx,
                 ))
-                .child(div().flex().flex_wrap().items_start().gap(px(36.)).child(screen).child(snippet)),
+                .child(div().flex().flex_wrap().items_start().gap(u(36.)).child(screen).child(snippet)),
         )
     }
 }

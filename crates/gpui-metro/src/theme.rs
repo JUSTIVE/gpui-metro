@@ -4,7 +4,7 @@
 //! and every app was expected to follow. This module keeps that contract: an
 //! app reads [`Theme::get`] and never hard-codes a colour.
 
-use gpui::{App, FontWeight, Global, Hsla, Rgba, SharedString, rgb};
+use gpui::{App, FontWeight, Global, Hsla, Rems, Rgba, SharedString, rems, rgb};
 
 /// Dark or light background, the first of the phone's two theme choices.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -204,6 +204,16 @@ impl Palette {
             },
         }
     }
+}
+
+/// Design px per rem. Metro is specified in phone pixels; gpui-metro sizes
+/// everything in rems (via [`u`]) so a subtree can be scaled (see
+/// [`crate::Scaled`]). At gpui's default 16 px rem, `u(24.)` is 24 px.
+pub const REM_PX: f32 = 16.;
+
+/// A length in Metro design px, as rems: scales with the rem size in force.
+pub fn u(design_px: f32) -> Rems {
+    rems(design_px / REM_PX)
 }
 
 /// The Metro type ramp (WP8 `PhoneFontSize*` resources), in px.

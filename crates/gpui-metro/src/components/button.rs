@@ -5,8 +5,10 @@ use std::rc::Rc;
 
 use gpui::{
     App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
+    StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder,
 };
+
+use crate::theme::u;
 
 use crate::{Icon, Theme, theme::size};
 
@@ -72,15 +74,15 @@ impl RenderOnce for Button {
             .flex_none()
             .items_center()
             .justify_center()
-            .gap(px(8.))
-            .min_w(px(108.))
-            .h(px(52.))
-            .px(px(20.))
-            .border(px(3.))
+            .gap(u(8.))
+            .min_w(u(108.))
+            .h(u(52.))
+            .px(u(20.))
+            .border(u(3.))
             .border_color(if accent { p.accent } else { border })
             .when(accent, |el| el.bg(p.accent))
             .font_family(Theme::font(cx))
-            .text_size(px(size::MEDIUM))
+            .text_size(u(size::MEDIUM))
             .text_color(if accent { p.accent_ink } else { fg })
             .when(self.full_width, |el| el.w_full())
             .when(!disabled, |el| {
@@ -88,7 +90,7 @@ impl RenderOnce for Button {
                     .active(move |s| s.bg(p.accent).border_color(p.accent).text_color(p.accent_ink))
             })
             .when_some(self.icon, |el, icon| {
-                el.child(icon.render(px(20.), if accent { p.accent_ink } else { fg }))
+                el.child(icon.render(u(20.), if accent { p.accent_ink } else { fg }))
             })
             .child(self.label)
             .when_some(self.on_click.filter(|_| !disabled), |el, f| el.on_click(move |e, w, cx| f(e, w, cx)))
@@ -144,13 +146,13 @@ impl RenderOnce for RoundButton {
             .flex_none()
             .items_center()
             .justify_center()
-            .size(px(d))
+            .size(u(d))
             .rounded_full()
             .border_2()
             .border_color(color)
             .when_some(bg, |el, bg| el.bg(bg))
             .when(!disabled, |el| el.cursor_pointer().active(move |s| s.bg(accent).border_color(accent)))
-            .child(self.icon.render(px(d * 0.5), glyph))
+            .child(self.icon.render(u(d * 0.5), glyph))
             .when_some(self.on_click.filter(|_| !disabled), |el, f| el.on_click(move |e, w, cx| f(e, w, cx)))
     }
 }
@@ -180,7 +182,7 @@ impl RenderOnce for HyperlinkButton {
         div()
             .id(self.id)
             .font_family(Theme::font(cx))
-            .text_size(px(size::MEDIUM))
+            .text_size(u(size::MEDIUM))
             .text_color(p.foreground)
             .underline()
             .cursor_pointer()
