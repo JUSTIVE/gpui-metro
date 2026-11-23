@@ -250,7 +250,7 @@ impl Page {
                 "The two-line page header: the application name in small upper-case semibold over a huge lower-case page title, inset by the standard 24 px page margin."
             }
             Page::Motion => {
-                "Metro's own motions, after the Windows Phone Toolkit, each replaying on its own: turnstile for pages, turnstile feather for lists, swivel for pop-ups, slide for pivot panes, and the tilt effect under the pointer. GPUI can't rotate in 3D, so turns are projected through a perspective camera: content narrows toward the hinge and really shrinks (rem scaling)."
+                "Metro's own motions, after the Windows Phone Toolkit, each replaying on its own: turnstile for pages, turnstile feather for lists, swivel for pop-ups, slide for pivot panes, and the tilt effect under the pointer. GPUI can't rotate in 3D, so turns are projected through a perspective camera: a page narrows toward the hinge at full size, cut by the edge as it swings."
             }
         }
     }

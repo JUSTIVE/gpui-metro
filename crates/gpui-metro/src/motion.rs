@@ -5,9 +5,9 @@
 //! transform boxes or text, so the turn is projected instead: a flat element
 //! rotated by θ about the hinge, seen through a perspective camera, covers a
 //! narrower span that hugs the hinge. [`turn`] computes that span; [`enter`]
-//! clips the element to it and really shrinks its contents (rem scaling via
-//! [`crate::Scaled`], text included), so a page reads as swinging in
-//! edge-first rather than sliding or fading.
+//! clips the element to it at full size, so a page reads as swinging in
+//! edge-first rather than sliding, fading or zooming. Small rigid things
+//! (tiles) also shrink with the perspective as they turn.
 //!
 //! Only Metro's own motions live here, after the Windows Phone Toolkit:
 //!
@@ -33,7 +33,7 @@ use gpui::{
 
 use crate::theme::u;
 
-use crate::{Theme, chrome::PAGE_MARGIN, scaled::scaled};
+use crate::{Theme, chrome::PAGE_MARGIN};
 
 /// Metro's curve: everything decelerates hard into place (exponential out).
 pub fn ease_out_expo(t: f32) -> f32 {
@@ -116,13 +116,6 @@ pub fn turn(offset: f32, width: f32, degrees: f32) -> Turn {
 fn page_turn(degrees: f32, (inset, width): (f32, f32)) -> (f32, f32) {
     let t = turn(inset, width, degrees);
     ((t.width / width.max(1.)).clamp(0., 1.), t.left - inset)
-}
-
-/// How much a turned page's contents shrink. A true projection squeezes
-/// only horizontally; rem scaling is uniform, so the page is scaled partway
-/// toward its projected width and the clip does the rest.
-pub fn content_scale(width_fraction: f32) -> f32 {
-    0.55 + 0.45 * width_fraction.clamp(0., 1.)
 }
 
 /// Turnstile-in: `child` swings in about the left edge, after
@@ -213,22 +206,18 @@ fn turn_div(
         dst.flex_shrink = src.flex_shrink;
         dst.flex_basis = src.flex_basis;
     }
-    // …and narrows toward the hinge. Content that fills its parent's height
-    // (a page) also renders at rem scale `s`, in a box `s` × its natural
-    // width, so it shrinks as a whole and nothing reflows. Content sized by
-    // itself (a list row) is only clipped: scaling it would change its
-    // height mid-turn and shove every row below it. Both layers share one
-    // timeline, so they stay in step frame for frame.
-    let content = scaled(1.).relative().w_full().when(fills_height, |el| el.h_full()).child(wrapper.size_full());
+    // …and narrows toward the hinge, while the content inside keeps its
+    // full size (1 / fraction of the clip), so it is cut by the edge as it
+    // swings rather than squeezed. It is deliberately not scaled: rem
+    // scaling is uniform, and a uniformly shrinking page reads as a zoom,
+    // not a turn. Both layers share one timeline, so they stay in step.
+    let content = div().relative().when(fills_height, |el| el.h_full()).child(wrapper.size_full());
     let content = content.with_animations(id.clone(), animations.clone(), move |el, phase, t| {
         let (f, _) = fraction(phase, t);
-        let s = if fills_height { content_scale(f) } else { 1. };
-        let el = match own_width {
+        match own_width {
             Some(w) => el.w(w),
-            None => el.w(relative(s / f.max(0.02))),
-        };
-        let el = el.scale(s).top(relative((1. - s) / 2.));
-        if fills_height { el.h(relative(s)) } else { el }
+            None => el.w(relative(1. / f.max(0.02))),
+        }
     });
     clip.child(content)
         .with_animations(id, animations, move |el, phase, t| {
