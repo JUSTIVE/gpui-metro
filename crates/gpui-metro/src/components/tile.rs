@@ -5,7 +5,7 @@
 //! slides up to show it (the WP7 hub-tile peek), then slides back.
 
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, ClickEvent, ElementId, Hsla, InteractiveElement, IntoElement,
@@ -531,45 +531,37 @@ impl Cell {
         (r, k, self.h * k)
     }
 
-    /// Animates `tile` turning from `degrees.0` to `degrees.1` after `delay`;
-    /// invisible while it waits.
-    fn swing(self, tile: Tile, id: ElementId, delay: Duration, motion: Animation, degrees: (f32, f32)) -> AnyElement {
-        let mut animations = Vec::with_capacity(2);
-        if !delay.is_zero() {
-            animations.push(Animation::new(delay));
-        }
-        let delayed = animations.len() == 1;
-        animations.push(motion);
-        let at = move |phase: usize, t: f32| {
-            let waiting = delayed && phase == 0;
-            let t = if waiting { 0. } else { t };
-            (waiting, self.project(degrees.0 + (degrees.1 - degrees.0) * t))
-        };
-        let body = scaled(1.).absolute().left_0().top_0().child(tile).with_animations(
-            id.clone(),
-            animations.clone(),
-            move |el, phase, t| el.scale(at(phase, t).1.1),
-        );
+    /// `tile` turned by `degrees`, drawn in the same structure whether it is
+    /// turning or at rest, so the tile (and its tilt) keeps its state.
+    fn render(self, tile: Tile, degrees: f32, visible: bool) -> AnyElement {
+        let (r, k, h) = self.project(degrees);
         div()
             .absolute()
             .overflow_hidden()
-            .child(body)
-            .with_animations(id, animations, move |el, phase, t| {
-                let (waiting, (r, _, h)) = at(phase, t);
-                el.left(u(r.left - self.hinge))
-                    .top(u(self.y + (self.h - h) / 2.))
-                    .w(u(r.width))
-                    .h(u(h))
-                    .opacity(if waiting || r.width < 1. { 0. } else { 1. })
-            })
+            .left(u(r.left - self.hinge))
+            .top(u(self.y + (self.h - h) / 2.))
+            .w(u(r.width))
+            .h(u(h))
+            .opacity(if visible && r.width >= 1. { 1. } else { 0. })
+            .child(scaled(k).absolute().left_0().top_0().child(tile))
             .into_any_element()
     }
 }
 
-/// The turnstile-out a tile is in, if any.
-struct Exit {
-    tapped: Option<usize>,
-    generation: usize,
+/// The grid's turnstile clock. Tiles are drawn from it every frame (no
+/// animation elements), so a pressed tile stays the same element from its
+/// entrance through its exit.
+struct GridMotion {
+    /// When the entrance started (on appearing, or on a new `replay`).
+    entered_at: Instant,
+    replay: usize,
+    /// The exit in progress: the tapped tile (`usize::MAX` for none) and when.
+    exit: Option<(usize, Instant)>,
+}
+
+/// Seconds since `t`, minus `delay` (negative while still waiting).
+fn since(t: Instant, delay: Duration, now: Instant) -> f32 {
+    now.saturating_duration_since(t).as_secs_f32() - delay.as_secs_f32()
 }
 
 impl RenderOnce for TileGrid {
@@ -620,94 +612,114 @@ impl RenderOnce for TileGrid {
             .collect();
 
         let reduced = Theme::get(cx).reduced_motion;
-        let (turnstile, replay) = (self.turnstile, self.replay);
-        let enter_delays = enter_schedule(&positions);
-        let exit = self
-            .turnstile
-            .then(|| window.use_keyed_state(self.id.clone(), cx, |_, _| Exit { tapped: None, generation: 0 }));
-        let leaving = exit.as_ref().and_then(|e| {
-            let e = e.read(cx);
-            e.tapped.map(|t| (t, e.generation))
+        let now = Instant::now();
+        let motion = (self.turnstile && !reduced).then(|| {
+            window.use_keyed_state(self.id.clone(), cx, |_, _| GridMotion {
+                entered_at: Instant::now(),
+                replay: self.replay,
+                exit: None,
+            })
         });
-        // Leaving without a tap: everyone goes, in reading order.
-        let leaving = match leaving {
-            None if self.leave && !reduced => Some((usize::MAX, usize::MAX)),
-            l => l,
-        };
-        let schedule = leaving.map(|(t, _)| exit_schedule(&positions, t).0);
+        // Sync the clock with the props: a new replay restarts the entrance;
+        // `leave` starts an exit with no tapped tile.
+        let state = motion.as_ref().map(|m| {
+            m.update(cx, |m, _| {
+                if m.replay != self.replay {
+                    m.replay = self.replay;
+                    m.entered_at = now;
+                    m.exit = None;
+                }
+                match (self.leave, m.exit) {
+                    (true, None) => m.exit = Some((usize::MAX, now)),
+                    (false, Some((usize::MAX, _))) => {
+                        m.exit = None;
+                        m.entered_at = now;
+                    }
+                    _ => {}
+                }
+                (m.entered_at, m.exit)
+            })
+        });
+        let enter_delays = enter_schedule(&positions);
+        let exit_delays = state.and_then(|(_, exit)| exit).map(|(t, _)| exit_schedule(&positions, t).0);
         // Exit length per tapped tile, so each click knows when to launch.
-        let totals: Vec<Duration> = if exit.is_some() {
+        let totals: Vec<Duration> = if motion.is_some() {
             (0..positions.len()).map(|t| exit_schedule(&positions, t).1).collect()
         } else {
             Vec::new()
         };
 
-        let tiles = self.tiles.into_iter().zip(origins).enumerate().map(|(ix, (mut t, (x, y)))| {
-            // Route the click through the exit: animate first, launch after.
-            if let (Some(exit), Some(launch)) = (exit.clone(), t.on_click.take()) {
-                let total = totals[ix];
-                t.on_click = Some(Rc::new(move |e: &ClickEvent, window: &mut Window, cx: &mut App| {
-                    if reduced {
-                        return launch(e, window, cx);
+        // Each tile's angle now, and whether it is still moving.
+        let pose = |ix: usize| -> (f32, bool, bool) {
+            match state {
+                None => (0., true, false),
+                Some((_, Some((_, started)))) => {
+                    let delay = exit_delays.as_ref().map_or(Duration::ZERO, |d| d[ix]);
+                    let p = (since(started, delay, now) / EXIT_TILE.as_secs_f32()).clamp(0., 1.);
+                    (90. * ease_in_exp6(p), p < 1., p < 1.)
+                }
+                Some((entered, None)) => {
+                    let e = since(entered, enter_delays[ix], now);
+                    if e < 0. {
+                        // Waiting for its turn: not shown yet.
+                        return (ENTER_FROM_DEG, false, true);
                     }
-                    let started = exit.update(cx, |x, cx| {
-                        if x.tapped.is_some() {
-                            return false;
+                    let p = (e / ENTER.as_secs_f32()).clamp(0., 1.);
+                    (ENTER_FROM_DEG * (1. - ease_out_exp6(p)), true, p < 1.)
+                }
+            }
+        };
+        let mut moving = false;
+
+        let tiles: Vec<AnyElement> = self
+            .tiles
+            .into_iter()
+            .zip(origins)
+            .enumerate()
+            .map(|(ix, (mut t, (x, y)))| {
+                // Route the click through the exit: animate first, launch after.
+                if let (Some(motion), Some(launch)) = (motion.clone(), t.on_click.take()) {
+                    let total = totals[ix];
+                    t.on_click = Some(Rc::new(move |e: &ClickEvent, window: &mut Window, cx: &mut App| {
+                        let started = motion.update(cx, |m, cx| {
+                            if m.exit.is_some() {
+                                return false;
+                            }
+                            m.exit = Some((ix, Instant::now()));
+                            cx.notify();
+                            true
+                        });
+                        if !started {
+                            return;
                         }
-                        x.tapped = Some(ix);
-                        x.generation += 1;
-                        cx.notify();
-                        true
-                    });
-                    if !started {
-                        return;
-                    }
-                    let (e, launch, exit) = (e.clone(), launch.clone(), exit.clone());
-                    window
-                        .spawn(cx, async move |cx| {
-                            cx.background_executor().timer(total).await;
-                            cx.update(|window, cx| {
-                                // Re-arm first, so a grid that stays on screen comes back.
-                                exit.update(cx, |x, cx| {
-                                    x.tapped = None;
-                                    cx.notify();
-                                });
-                                launch(&e, window, cx);
+                        let (e, launch, motion) = (e.clone(), launch.clone(), motion.clone());
+                        window
+                            .spawn(cx, async move |cx| {
+                                cx.background_executor().timer(total).await;
+                                cx.update(|window, cx| {
+                                    // Re-arm first, so a grid that stays on screen comes back.
+                                    motion.update(cx, |m, cx| {
+                                        m.exit = None;
+                                        cx.notify();
+                                    });
+                                    launch(&e, window, cx);
+                                })
+                                .ok();
                             })
-                            .ok();
-                        })
-                        .detach();
-                }));
-            }
+                            .detach();
+                    }));
+                }
+                let (tw, th) = t.size.pixels(unit, gap);
+                let (degrees, visible, running) = pose(ix);
+                moving |= running;
+                Cell { x, y, w: tw, h: th, hinge }.render(t.metrics(unit, gap), degrees, visible)
+            })
+            .collect();
+        if moving {
+            window.request_animation_frame();
+        }
 
-            let (tw, th) = t.size.pixels(unit, gap);
-            let tile = t.metrics(unit, gap);
-            let cell = Cell { x, y, w: tw, h: th, hinge };
-            match (&schedule, leaving) {
-                // Turnstile-out: every tile turns to 90° about the screen's
-                // left edge, ease-in, in the wave the schedule sets.
-                (Some(delays), Some((_, generation))) => cell.swing(
-                    tile,
-                    ElementId::from((SharedString::from(format!("tile-exit-{generation}")), ix)),
-                    delays[ix],
-                    Animation::new(EXIT_TILE).with_easing(ease_in_exp6),
-                    (0., 90.),
-                ),
-                // Turnstile-in: each tile swings open from edge-on, feathered in
-                // reading order. Plays whenever the grid appears (or `replay`
-                // changes).
-                _ if turnstile && !reduced => cell.swing(
-                    tile,
-                    ElementId::from((SharedString::from(format!("tile-enter-{replay}")), ix)),
-                    enter_delays[ix],
-                    Animation::new(ENTER).with_easing(ease_out_exp6),
-                    (ENTER_FROM_DEG, 0.),
-                ),
-                _ => div().absolute().left(u(x)).top(u(y)).child(tile).into_any_element(),
-            }
-        });
-
-        div().relative().flex_none().w(u(width)).h(u(height)).children(headers).children(tiles.collect::<Vec<_>>())
+        div().relative().flex_none().w(u(width)).h(u(height)).children(headers).children(tiles)
     }
 }
 
