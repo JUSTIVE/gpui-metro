@@ -7,10 +7,12 @@
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use std::hash::{Hash, Hasher};
+
 use gpui::{
-    AnyElement, App, ClickEvent, ElementId, Hsla, InteractiveElement, IntoElement,
-    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div,
-    prelude::FluentBuilder,
+    AnyElement, App, ClickEvent, Context, ElementId, Hsla, InteractiveElement, IntoElement,
+    ParentElement, Render, RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement, Styled,
+    Window, div,
 };
 
 use crate::theme::u;
@@ -139,6 +141,8 @@ pub struct Tile {
     unit: f32,
     gap: f32,
     on_click: Option<crate::button::ClickHandler>,
+    /// What the faces show, as a hash; see [`Tile::content_key`].
+    content_key: Option<u64>,
 }
 
 pub fn tile(id: impl Into<ElementId>, size: TileSize) -> Tile {
@@ -156,6 +160,7 @@ pub fn tile(id: impl Into<ElementId>, size: TileSize) -> Tile {
         unit: TILE_UNIT,
         gap: TILE_GAP,
         on_click: None,
+        content_key: None,
     }
 }
 
@@ -205,6 +210,80 @@ impl Tile {
     pub fn on_click(mut self, f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Rc::new(f));
         self
+    }
+    /// Everything the faces show, hashed. A live tile given one draws its
+    /// faces in a view of its own and keeps the last drawing until the key
+    /// changes, so a slide redraws this tile and not the page around it —
+    /// with many live tiles one is nearly always sliding, and without it
+    /// every frame of every slide redraws them all. Without a key the tile
+    /// cannot tell when its faces changed, and redraws with its page.
+    ///
+    /// The page itself is still put together again every frame of a slide:
+    /// a view that asks for a frame dirties every view above it. Keep the
+    /// grid out of a `cached` view of its own, too — gpui redraws everything
+    /// under a cached view it redraws, tiles included.
+    pub fn content_key(mut self, key: impl Hash) -> Self {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        key.hash(&mut h);
+        self.content_key = Some(h.finish());
+        self
+    }
+}
+
+/// A live tile's sliding body, as a view of its own: the peek's frames
+/// notify this view, which redraws one tile (see [`Tile::content_key`]).
+/// The tile hands it its faces every time the page draws it.
+#[derive(Default)]
+struct LiveBody {
+    id: Option<ElementId>,
+    front: Option<Face>,
+    back: Option<Face>,
+    size: Option<TileSize>,
+    bg: Option<Hsla>,
+    ink: Option<Hsla>,
+    title: Option<SharedString>,
+    w: f32,
+    h: f32,
+    period: f32,
+    phase: f32,
+    key: Option<u64>,
+}
+
+impl Render for LiveBody {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (Some(id), Some(front), Some(back), Some(size), Some(bg), Some(ink)) =
+            (self.id.clone(), self.front.take(), self.back.take(), self.size, self.bg, self.ink)
+        else {
+            return div().into_any_element();
+        };
+        let (w, h) = (self.w, self.h);
+        let slide = PEEK_SLIDE_SECS / self.period;
+        let t = peek_clock(&id, self.period, self.phase, slide, window, cx);
+        let title = self.title.clone();
+        let face = |content: AnyElement| {
+            div().relative().w(u(w)).h(u(h)).flex_none().overflow_hidden().child(content).children(
+                title.clone().map(|t| {
+                    div().absolute().left(u(8.)).bottom(u(6.)).text_size(u(size::SMALL)).text_color(ink).child(t)
+                }),
+            )
+        };
+        // The strip holds both faces stacked; it rides up by one face.
+        div()
+            .relative()
+            .size_full()
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .top(u(-h * peek_offset(t, slide)))
+                    .w(u(w))
+                    .h(u(h * 2.))
+                    .flex()
+                    .flex_col()
+                    .child(face(front(size, bg)))
+                    .child(face(back(size, bg))),
+            )
+            .into_any_element()
     }
 }
 
@@ -299,36 +378,60 @@ impl RenderOnce for Tile {
             })
         };
 
-        let front: AnyElement = match self.front {
-            Some(f) => f(size, bg),
-            None => default_front(size, self.icon, self.count, ink),
-        };
-        let face = |content: AnyElement, with_label: bool| {
-            div().relative().w(u(w)).h(u(h)).flex_none().overflow_hidden().child(content).when(with_label, |el| {
-                el.children(label())
-            })
-        };
-
         let body: AnyElement = match self.back {
             Some(back) if !reduced => {
-                let back = back(size, bg);
-                let period = self.period;
-                let slide = PEEK_SLIDE_SECS / self.period;
-                let t = peek_clock(&self.id, period, self.phase, slide, window, cx);
-                // The strip holds both faces stacked; it rides up by one face.
+                let (icon, count) = (self.icon, self.count);
+                let front: Face = match self.front {
+                    Some(f) => f,
+                    None => Box::new(move |s, _| default_front(s, icon, count, ink)),
+                };
+                let key = self.content_key;
+                let view = window.use_keyed_state(
+                    ElementId::from((SharedString::from(format!("{}-live", self.id)), 0usize)),
+                    cx,
+                    |_, _| LiveBody::default(),
+                );
+                // Drawn afresh when what it shows changed (or nothing says),
+                // and from its last drawing otherwise.
+                let fresh = key.is_none() || view.read(cx).key != key;
+                let (id, title, period, phase) = (self.id.clone(), self.title.clone(), self.period, self.phase);
+                view.update(cx, |v, _| {
+                    *v = LiveBody {
+                        id: Some(id),
+                        front: Some(front),
+                        back: Some(back),
+                        size: Some(size),
+                        bg: Some(bg),
+                        ink: Some(ink),
+                        title,
+                        w,
+                        h,
+                        period,
+                        phase,
+                        key,
+                    };
+                });
+                if fresh {
+                    view.into_any_element()
+                } else {
+                    view.cached(StyleRefinement::default().w(u(w)).h(u(h))).into_any_element()
+                }
+            }
+            _ => {
+                let front: AnyElement = match self.front {
+                    Some(f) => f(size, bg),
+                    None => default_front(size, self.icon, self.count, ink),
+                };
                 div()
-                    .absolute()
-                    .left_0()
-                    .top(u(-h * peek_offset(t, slide)))
+                    .relative()
                     .w(u(w))
-                    .h(u(h * 2.))
-                    .flex()
-                    .flex_col()
-                    .child(face(front, true))
-                    .child(face(back, true))
+                    .h(u(h))
+                    .flex_none()
+                    .overflow_hidden()
+                    .child(front)
+                    .children(label())
                     .into_any_element()
             }
-            _ => face(front, true).into_any_element(),
         };
 
         let face = div().relative().w(u(w)).h(u(h)).overflow_hidden().bg(bg).font_family(font).child(body);
