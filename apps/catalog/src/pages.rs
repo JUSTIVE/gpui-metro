@@ -66,13 +66,14 @@ pub enum Page {
     JumpList,
     MessageBox,
     Toast,
+    SettingsFlyout,
     SystemTray,
     Header,
     Motion,
 }
 
 impl Page {
-    pub const ALL: [Page; 28] = [
+    pub const ALL: [Page; 29] = [
         Page::Palette,
         Page::Typography,
         Page::Icons,
@@ -98,6 +99,7 @@ impl Page {
         Page::JumpList,
         Page::MessageBox,
         Page::Toast,
+        Page::SettingsFlyout,
         Page::SystemTray,
         Page::Header,
         Page::Motion,
@@ -127,7 +129,7 @@ impl Page {
             | Page::TextBox => Group::Controls,
             Page::ProgressBar | Page::ProgressDots | Page::ProgressRing => Group::Progress,
             Page::ListItem | Page::JumpList => Group::Lists,
-            Page::MessageBox | Page::Toast => Group::Overlays,
+            Page::MessageBox | Page::Toast | Page::SettingsFlyout => Group::Overlays,
             Page::SystemTray | Page::Header | Page::Motion => Group::Chrome,
         }
     }
@@ -160,6 +162,7 @@ impl Page {
             Page::JumpList => "jump list",
             Page::MessageBox => "message box",
             Page::Toast => "toast",
+            Page::SettingsFlyout => "settings flyout",
             Page::SystemTray => "system tray",
             Page::Header => "page header",
             Page::Motion => "motion",
@@ -242,6 +245,9 @@ impl Page {
             }
             Page::Toast => {
                 "A toast is an accent strip that drops in from the top edge with an icon, a bold title and a one-line message. This demo dismisses it after three seconds using a gpui timer task; tapping it dismisses it early."
+            }
+            Page::SettingsFlyout => {
+                "Windows 8's settings flyout: a full-height panel that slides in from the right edge under an accent header with a back button and a title. The page isn't dimmed; tap anywhere outside the panel to dismiss it (light dismiss). Narrow is 346 px, wide 646 px. Render it every frame with whether it is open: it slides itself back out when that turns false."
             }
             Page::SystemTray => {
                 "The status strip along the top edge: signal, wi-fi, battery and clock. It is transparent by default so the page shows through, or opaque in the chrome colour. The phone frame's own tray follows the controls here."
@@ -452,6 +458,15 @@ list_item("x", "plain").subtle_subtitle()"#
 toast("t", "Messaging")
     .icon(Icon::Mail)
     .message("are we still on?")"#
+            }
+            Page::SettingsFlyout => {
+                r#"// last child of a relative() root, every frame
+settings_flyout("options", self.options_open)
+    .title("options")
+    .width(FlyoutWidth::Narrow) // or Wide
+    .child(toggle_switch(..).header("sync"))
+    .on_back(..)    // defaults to on_dismiss
+    .on_dismiss(..) // a tap outside: set open = false"#
             }
             Page::SystemTray => {
                 r#"system_tray("12:38")

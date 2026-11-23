@@ -35,6 +35,7 @@ pub use app_bar::{AppBar, AppBarMode, app_bar};
 pub use button::{Button, HyperlinkButton, RoundButton, button, hyperlink, round_button};
 pub use chrome::{PAGE_MARGIN, PageHeader, SystemTray, page_header, system_tray};
 pub use dialog::{MessageBox, Toast, message_box, toast};
+pub use flyout::{FlyoutWidth, SettingsFlyout, settings_flyout};
 pub use list::{ALPHABET, JumpList, Leading, ListGroup, ListItem, ListPicker, jump_list, list_item, list_picker};
 pub use panorama::{Panorama, panorama};
 pub use pivot::{Pivot, pivot};
@@ -60,7 +61,8 @@ pub mod prelude {
     pub use crate::{
         Accent, Icon, Mode, Palette, Theme, TextStyle, TileSize, app_bar, button, check_box, hyperlink, jump_list,
         list_item, list_picker, message_box, page_header, panorama, pivot, progress_bar, progress_dots,
-        progress_ring, radio_button, round_button, scaled, slider, system_tray, text, text_box, tile, tile_grid,
+        progress_ring, radio_button, round_button, scaled, settings_flyout, slider, system_tray, text, text_box, tile,
+        tile_grid,
         toast, toggle_switch, u,
     };
 }

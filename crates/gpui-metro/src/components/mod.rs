@@ -2,6 +2,7 @@ pub mod app_bar;
 pub mod button;
 pub mod chrome;
 pub mod dialog;
+pub mod flyout;
 pub mod list;
 pub mod pager;
 pub mod panorama;

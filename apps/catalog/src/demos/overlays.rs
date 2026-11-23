@@ -3,7 +3,9 @@
 use std::time::Duration;
 
 use gpui::{Context, IntoElement, ParentElement, Styled, Task, div};
-use gpui_metro::{Icon, TextStyle, button, check_box, message_box, text, toast};
+use gpui_metro::{
+    FlyoutWidth, Icon, TextStyle, button, check_box, message_box, settings_flyout, slider, text, toast, toggle_switch,
+};
 
 use super::{Demo, DemoState, caption, on, page, stack, tap};
 use crate::app::Catalog;
@@ -91,4 +93,48 @@ pub fn toast_page(s: &DemoState, cx: &mut Context<Catalog>) -> Demo {
             .into_any_element()
     });
     Demo { body, overlay }
+}
+
+pub fn flyout_page(s: &DemoState, cx: &mut Context<Catalog>) -> Demo {
+    let body = page(
+        "settings flyout",
+        stack()
+            .child(text(TextStyle::Normal, "Settings live in a panel that slides in from the right edge."))
+            .child(div().flex().child(button("fo-open", "options").on_click(tap(cx, |s| {
+                s.flyout_open = true;
+                s.flyout_log = "open".into();
+            }))))
+            .child(
+                check_box("fo-wide", s.flyout_wide)
+                    .label("wide (646 px)")
+                    .on_change(on(cx, |s, v| s.flyout_wide = v)),
+            )
+            .child(text(TextStyle::Accent, s.flyout_log.clone()))
+            .child(caption(format!(
+                "sync {} · volume {:.0} %",
+                if s.flyout_sync { "on" } else { "off" },
+                s.flyout_volume * 100.
+            ))),
+    );
+    let close = |how: &'static str| {
+        tap(cx, move |s| {
+            s.flyout_open = false;
+            s.flyout_log = how.into();
+        })
+    };
+    // Always rendered: it slides itself out after `open` turns false.
+    let overlay = settings_flyout("fo", s.flyout_open)
+        .title("options")
+        .width(if s.flyout_wide { FlyoutWidth::Wide } else { FlyoutWidth::Narrow })
+        .child(
+            toggle_switch("fo-sync", s.flyout_sync)
+                .header("sync settings")
+                .on_change(on(cx, |s, v| s.flyout_sync = v)),
+        )
+        .child(slider("fo-volume", s.flyout_volume).header("volume").on_change(on(cx, |s, v| s.flyout_volume = v)))
+        .child(text(TextStyle::Subtle, "changes apply at once; there is no save button in a flyout."))
+        .on_back(close("closed with back"))
+        .on_dismiss(close("dismissed by tapping outside"))
+        .into_any_element();
+    Demo { body, overlay: Some(overlay) }
 }
