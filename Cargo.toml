@@ -10,8 +10,10 @@ license = "MIT"
 [workspace.dependencies]
 # Zed's gpui, pinned. gpui_platform supplies the platform backend and the
 # application entry point; runtime_shaders avoids needing Xcode's Metal Toolchain.
-gpui = { git = "https://github.com/zed-industries/zed", rev = "a7d74150ac7a663fdaa01ec5177e303baaf6c331" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "a7d74150ac7a663fdaa01ec5177e303baaf6c331", features = ["font-kit", "runtime_shaders"] }
+# 59b2ebf is the rev claudmagi and base-gpui pin: cargo treats two revs of the
+# same repo as different gpui crates, so apps embedding gpui-metro must match it.
+gpui = { git = "https://github.com/zed-industries/zed", rev = "59b2ebf10351b5c0b5cd4403f01ed0460eeec06d" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "59b2ebf10351b5c0b5cd4403f01ed0460eeec06d", features = ["font-kit", "runtime_shaders"] }
 gpui-metro = { path = "crates/gpui-metro" }
 anyhow = "1"
 
