@@ -1,16 +1,16 @@
 //! Progress: the flat accent bar, the five flowing dots of the indeterminate
 //! bar, and the orbiting dots of the progress ring.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use gpui::{
-    Animation, AnimationExt, App, ElementId, IntoElement, ParentElement, RenderOnce, Styled, Window, div,
-    relative,
-};
+use gpui::{App, ElementId, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, relative};
 
 use crate::theme::u;
 
-use crate::Theme;
+use crate::{
+    Theme,
+    motion::request_ambient_frame,
+};
 
 /// `None` = indeterminate.
 #[derive(IntoElement)]
@@ -59,8 +59,18 @@ fn ease_in(t: f32) -> f32 {
     t * t
 }
 
+/// Seconds since this indicator first appeared, on its own clock, with the
+/// next frame booked on the shared ambient clock: an indicator spins for as
+/// long as it is shown, so it runs at [`crate::motion::AMBIENT_FPS`], not every refresh.
+fn spin_clock(id: &ElementId, window: &mut Window, cx: &mut App) -> f32 {
+    let key = ElementId::from((SharedString::from(format!("{id}-spin")), 0usize));
+    let started = *window.use_keyed_state(key, cx, |_, _| Instant::now()).read(cx);
+    request_ambient_frame(window, cx);
+    started.elapsed().as_secs_f32()
+}
+
 impl RenderOnce for ProgressBar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = Theme::palette(cx);
         match self.value {
             Some(v) => div()
@@ -72,22 +82,15 @@ impl RenderOnce for ProgressBar {
                 .into_any_element(),
             None => {
                 let accent = p.accent;
+                let t = (spin_clock(&self.id, window, cx) / CYCLE.as_secs_f32()).fract();
                 div()
                     .relative()
                     .w_full()
                     .h(u(4.))
                     .overflow_hidden()
-                    .with_animation(self.id, Animation::new(CYCLE).repeat(), move |el, t| {
-                        let mut el = el;
-                        for i in 0..DOTS {
-                            if let Some(x) = dot_position(i, t) {
-                                el = el.child(
-                                    div().absolute().top_0().left(relative(x)).size(u(4.)).bg(accent),
-                                );
-                            }
-                        }
-                        el
-                    })
+                    .children((0..DOTS).filter_map(|i| dot_position(i, t)).map(|x| {
+                        div().absolute().top_0().left(relative(x)).size(u(4.)).bg(accent)
+                    }))
                     .into_any_element()
             }
         }
@@ -167,33 +170,23 @@ pub fn ring_dot(t: f32) -> Option<f32> {
 }
 
 impl RenderOnce for ProgressRing {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let accent = Theme::palette(cx).accent;
         let d = self.diameter;
         let dot = (d / 8.).max(3.);
         let r = (d - dot) / 2.;
         // One animation over the whole staggered cycle; each dot reads its own clock.
         let total = RING_CYCLE + RING_STAGGER * (RING_DOTS - 1) as f32;
-        div()
-            .relative()
-            .flex_none()
-            .size(u(d))
-            .with_animation(self.id, Animation::new(Duration::from_secs_f32(total)).repeat(), move |el, t| {
-                let now = t * total;
-                let mut el = el;
-                for i in 0..RING_DOTS {
-                    let local = now - i as f32 * RING_STAGGER;
-                    if !(0. ..RING_CYCLE).contains(&local) {
-                        continue;
-                    }
-                    if let Some(deg) = ring_dot(local / RING_CYCLE) {
-                        let a = deg.to_radians();
-                        let (x, y) = (r + r * a.sin(), r - r * a.cos());
-                        el = el.child(div().absolute().left(u(x)).top(u(y)).size(u(dot)).rounded_full().bg(accent));
-                    }
-                }
-                el
-            })
+        let now = spin_clock(&self.id, window, cx) % total;
+        div().relative().flex_none().size(u(d)).children((0..RING_DOTS).filter_map(|i| {
+            let local = now - i as f32 * RING_STAGGER;
+            if !(0. ..RING_CYCLE).contains(&local) {
+                return None;
+            }
+            let a = ring_dot(local / RING_CYCLE)?.to_radians();
+            let (x, y) = (r + r * a.sin(), r - r * a.cos());
+            Some(div().absolute().left(u(x)).top(u(y)).size(u(dot)).rounded_full().bg(accent))
+        }))
     }
 }
 

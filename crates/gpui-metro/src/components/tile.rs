@@ -143,6 +143,8 @@ pub struct Tile {
     on_click: Option<crate::button::ClickHandler>,
     /// What the faces show, as a hash; see [`Tile::content_key`].
     content_key: Option<u64>,
+    /// A back face given as text ([`Tile::back_text`]).
+    back_text: Option<(SharedString, Vec<SharedString>)>,
 }
 
 pub fn tile(id: impl Into<ElementId>, size: TileSize) -> Tile {
@@ -161,6 +163,7 @@ pub fn tile(id: impl Into<ElementId>, size: TileSize) -> Tile {
         gap: TILE_GAP,
         on_click: None,
         content_key: None,
+        back_text: None,
     }
 }
 
@@ -192,6 +195,17 @@ impl Tile {
     /// Make the tile live with a back face.
     pub fn back<E: IntoElement>(mut self, f: impl FnOnce(TileSize, Hsla) -> E + 'static) -> Self {
         self.back = Some(Box::new(move |s, c| f(s, c).into_any_element()));
+        self
+    }
+    /// Make the tile live with the usual back face: a headline over a few
+    /// lines, in the tile's ink. Given as text, the tile knows when it
+    /// changed, so it needs no [`Tile::content_key`] (with the default front).
+    pub fn back_text(
+        mut self,
+        headline: impl Into<SharedString>,
+        lines: impl IntoIterator<Item = impl Into<SharedString>>,
+    ) -> Self {
+        self.back_text = Some((headline.into(), lines.into_iter().map(Into::into).collect()));
         self
     }
     pub fn period(mut self, seconds: f32) -> Self {
@@ -331,13 +345,14 @@ fn peek_clock(id: &ElementId, period: f32, phase: f32, slide: f32, window: &mut 
     let start = clock.read(cx).start;
     let t = (now.saturating_duration_since(start).as_secs_f32() / period + phase).fract();
     match peek_wait(t, slide) {
-        None => window.request_animation_frame(),
+        // Mid-slide: the next frame on the shared ambient clock.
+        None => motion::request_ambient_frame(window, cx),
         Some(wait) => {
             let view = window.current_view();
             let weak = clock.downgrade();
             let booked = clock.read(cx).wake.as_ref().is_some_and(|(at, _)| *at > now);
             if !booked {
-                let dt = Duration::from_secs_f32(wait * period);
+                let dt = motion::ambient_delay(Duration::from_secs_f32(wait * period), cx);
                 let task = window.spawn(cx, async move |cx| {
                     cx.background_executor().timer(dt).await;
                     cx.update(|_, cx| {
@@ -378,14 +393,34 @@ impl RenderOnce for Tile {
             })
         };
 
-        let body: AnyElement = match self.back {
+        // What the faces show, as far as the tile can tell: the caller's key,
+        // or, with the default front and a text back, the text itself; plus
+        // everything the tile adds (size, colours, title, icon, count). A
+        // theme or accent change then redraws the faces too.
+        let known = self.content_key.is_some() || (self.front.is_none() && self.back_text.is_some());
+        let key = known.then(|| {
+            let mut k = std::collections::hash_map::DefaultHasher::new();
+            self.content_key.hash(&mut k);
+            self.back_text.hash(&mut k);
+            (size, self.icon, self.count, &self.title, font.as_ref()).hash(&mut k);
+            for c in [bg, ink] {
+                [c.h, c.s, c.l, c.a].map(f32::to_bits).hash(&mut k);
+            }
+            [w, h].map(f32::to_bits).hash(&mut k);
+            k.finish()
+        });
+        let back = self.back.or_else(|| {
+            self.back_text.map(|(headline, lines)| -> Face {
+                Box::new(move |size, _| back_text_face(size, headline, lines, ink))
+            })
+        });
+        let body: AnyElement = match back {
             Some(back) if !reduced => {
                 let (icon, count) = (self.icon, self.count);
                 let front: Face = match self.front {
                     Some(f) => f,
                     None => Box::new(move |s, _| default_front(s, icon, count, ink)),
                 };
-                let key = self.content_key;
                 let view = window.use_keyed_state(
                     ElementId::from((SharedString::from(format!("{}-live", self.id)), 0usize)),
                     cx,
@@ -447,6 +482,24 @@ impl RenderOnce for Tile {
             None => div().id(self.id).flex_none().child(face).into_any_element(),
         }
     }
+}
+
+/// The [`Tile::back_text`] face: a headline over a few lines.
+fn back_text_face(size: TileSize, headline: SharedString, lines: Vec<SharedString>, ink: Hsla) -> AnyElement {
+    let big = if size == TileSize::Small { size::MEDIUM } else { size::LARGE };
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .p(u(10.))
+        .pb(u(26.))
+        .gap(u(2.))
+        .text_color(ink)
+        .child(div().text_size(u(big)).line_height(u(big + 4.)).child(headline))
+        .children(lines.into_iter().map(|l| {
+            div().text_size(u(size::SMALL)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(l)
+        }))
+        .into_any_element()
 }
 
 fn default_front(size: TileSize, icon: Option<Icon>, count: Option<u32>, ink: Hsla) -> AnyElement {

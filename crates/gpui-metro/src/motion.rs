@@ -36,6 +36,78 @@ use crate::theme::u;
 
 use crate::{Theme, chrome::PAGE_MARGIN};
 
+/// Ambient motion — live tiles peeking, progress indicators — runs at this
+/// rate whatever the display does. On a 120 Hz screen it would otherwise ask
+/// for every refresh: ambient motion is slow and always somewhere on screen,
+/// so those frames are most of what a resting app spends. Windows Phone drew
+/// it at 60. Transitions the user starts (turnstiles, pivots) keep the
+/// display's rate.
+pub const AMBIENT_FPS: f32 = 60.;
+
+/// The shared ambient clock: the views waiting for its next tick, and the
+/// one timer that will wake them, so every ambient animation on screen lands
+/// in the same frames instead of each asking on its own.
+struct Ambient {
+    epoch: std::time::Instant,
+    views: Vec<gpui::EntityId>,
+    tick: Option<gpui::Task<()>>,
+}
+
+impl gpui::Global for Ambient {}
+
+/// How long from `since_epoch` to the next tick of a clock ticking every
+/// `period` from its epoch.
+pub fn until_next_tick(since_epoch: Duration, period: Duration) -> Duration {
+    let p = period.as_secs_f64();
+    let k = (since_epoch.as_secs_f64() / p).floor() + 1.;
+    Duration::from_secs_f64(k * p) - since_epoch
+}
+
+/// Asks for the next ambient frame for the view being drawn: it is
+/// notified on the shared [`AMBIENT_FPS`] clock's next tick. Use it in
+/// place of `window.request_animation_frame()` for motion nobody started.
+pub fn request_ambient_frame(window: &Window, cx: &mut App) {
+    let view = window.current_view();
+    ensure_ambient(cx);
+    let ambient = cx.global_mut::<Ambient>();
+    if !ambient.views.contains(&view) {
+        ambient.views.push(view);
+    }
+    if ambient.tick.is_some() {
+        return;
+    }
+    let period = Duration::from_secs_f32(1. / AMBIENT_FPS);
+    let wait = until_next_tick(ambient.epoch.elapsed(), period);
+    let tick = cx.spawn(async move |cx| {
+        cx.background_executor().timer(wait).await;
+        cx.update(|cx| {
+            let ambient = cx.global_mut::<Ambient>();
+            ambient.tick = None;
+            let views = std::mem::take(&mut ambient.views);
+            for view in views {
+                cx.notify(view);
+            }
+        });
+    });
+    cx.global_mut::<Ambient>().tick = Some(tick);
+}
+
+fn ensure_ambient(cx: &mut App) {
+    if !cx.has_global::<Ambient>() {
+        cx.set_global(Ambient { epoch: std::time::Instant::now(), views: Vec::new(), tick: None });
+    }
+}
+
+/// `after`, pushed back to the ambient clock's next tick: for a timer that
+/// wakes ambient motion later (a live tile's next slide), so the frame it
+/// causes is one the clock draws anyway instead of an extra one between.
+pub fn ambient_delay(after: Duration, cx: &mut App) -> Duration {
+    ensure_ambient(cx);
+    let period = Duration::from_secs_f32(1. / AMBIENT_FPS);
+    let at = cx.global::<Ambient>().epoch.elapsed() + after;
+    after + until_next_tick(at, period)
+}
+
 /// Metro's curve: everything decelerates hard into place (exponential out).
 pub fn ease_out_expo(t: f32) -> f32 {
     if t >= 1. { 1. } else { 1. - 2f32.powf(-10. * t) }
@@ -680,6 +752,18 @@ pub fn generation_id(base: &str, generation: usize) -> ElementId {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ambient_ticks_land_on_one_grid() {
+        let p = Duration::from_millis(16);
+        assert_eq!(until_next_tick(Duration::from_millis(0), p), p);
+        assert_eq!(until_next_tick(Duration::from_millis(5), p), Duration::from_millis(11));
+        assert_eq!(until_next_tick(Duration::from_millis(16), p), p, "on a tick: wait for the next");
+        // Two asks a few ms apart wake on the same tick.
+        let a = Duration::from_millis(33) + until_next_tick(Duration::from_millis(33), p);
+        let b = Duration::from_millis(40) + until_next_tick(Duration::from_millis(40), p);
+        assert_eq!(a, b);
+    }
 
     #[test]
     fn curves_hit_their_ends() {

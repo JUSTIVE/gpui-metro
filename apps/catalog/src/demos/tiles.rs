@@ -32,21 +32,6 @@ fn agenda(_: TileSize, _: Hsla) -> impl IntoElement {
         .child(div().absolute().right(u(12.)).bottom(u(2.)).text_size(u(size::HUGE)).font_weight(LIGHT).child("23"))
 }
 
-/// A back face: a few lines of text over the tile colour.
-fn back_text(title: &'static str, body: &'static str) -> impl FnOnce(TileSize, Hsla) -> AnyElement {
-    move |_, _| {
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .p(u(10.))
-            .text_color(gpui::white())
-            .child(div().text_size(u(size::MEDIUM_LARGE)).child(title))
-            .child(div().text_size(u(size::SMALL)).opacity(0.85).child(body))
-            .into_any_element()
-    }
-}
-
 pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
     let mail = tile("tile-mail", TileSize::Medium)
         .title("mail")
@@ -84,7 +69,7 @@ pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                         tile("tile-people", TileSize::Medium)
                             .title("people")
                             .icon(Icon::People)
-                            .back(back_text("kristin", "new photo"))
+                            .back_text("kristin", ["new photo"])
                             .period(10.),
                     )
                     .child(
@@ -92,7 +77,7 @@ pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                             .title("music")
                             .icon(Icon::Play)
                             .color(Accent::Orange.color())
-                            .back(back_text("now playing", "daft punk · get lucky"))
+                            .back_text("now playing", ["daft punk · get lucky"])
                             .period(10.)
                             .phase(0.5),
                     ),
@@ -103,7 +88,7 @@ pub fn tile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                     .title("weather")
                     .icon(Icon::Snow)
                     .color(Accent::Cobalt.color())
-                    .back(back_text("seattle −2°", "snow through the evening, clearing overnight"))
+                    .back_text("seattle −2°", ["snow through the evening, clearing overnight"])
                     .period(12.)
                     .phase(0.25),
             ),
@@ -137,7 +122,7 @@ fn start_tiles(mail_count: u32, cx: &Context<Catalog>) -> Vec<Tile> {
         tile("start-people", TileSize::Wide)
             .title("people")
             .icon(Icon::People)
-            .back(back_text("ben, kristin, anna", "3 new posts"))
+            .back_text("ben, kristin, anna", ["3 new posts"])
             .period(11.)
             .on_click(launch(cx, Launched::Panorama)),
         tile("start-mail", TileSize::Medium)
@@ -148,7 +133,7 @@ fn start_tiles(mail_count: u32, cx: &Context<Catalog>) -> Vec<Tile> {
         tile("start-calendar", TileSize::Medium)
             .title("calendar")
             .icon(Icon::Calendar)
-            .back(back_text("dentist", "3:30 pm today"))
+            .back_text("dentist", ["3:30 pm today"])
             .period(13.)
             .phase(0.4),
         tile("start-music", TileSize::Wide).title("music+videos").icon(Icon::Play).color(Accent::Orange.color()),
@@ -158,7 +143,7 @@ fn start_tiles(mail_count: u32, cx: &Context<Catalog>) -> Vec<Tile> {
         tile("start-weather", TileSize::Large)
             .title("weather")
             .icon(Icon::Snow)
-            .back(back_text("seattle −2°", "snow"))
+            .back_text("seattle −2°", ["snow"])
             .period(12.)
             .phase(0.7),
         tile("start-lock", TileSize::Small).icon(Icon::Lock),

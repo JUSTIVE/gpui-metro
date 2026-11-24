@@ -3758,6 +3758,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "perf-incubator"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "gpui-metro",
+ "gpui_platform",
+ "libc",
+]
+
+[[package]]
 name = "phf"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

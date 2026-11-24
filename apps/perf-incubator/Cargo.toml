@@ -1,0 +1,12 @@
+[package]
+name = "perf-incubator"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+gpui.workspace = true
+gpui_platform.workspace = true
+gpui-metro.workspace = true
+libc = "0.2"

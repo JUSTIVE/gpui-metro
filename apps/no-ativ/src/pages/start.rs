@@ -1,49 +1,13 @@
 //! The start screen: one live tile per destination, each showing a real
 //! reading from the store.
 
-use gpui::{App, Hsla, ScrollWheelEvent, div, prelude::*};
+use gpui::{App, ScrollWheelEvent, div, prelude::*};
 use gpui_metro::u;
-use gpui_metro::{Accent, Icon, PAGE_MARGIN, TextStyle, TileSize, text, theme::size, tile, tile_grid};
+use gpui_metro::{Accent, Icon, PAGE_MARGIN, TextStyle, TileSize, text, tile, tile_grid};
 
 use crate::data::{LotState, SensorState};
 use crate::nav::{Nav, Page, PageView};
 use crate::store::{Store, reading};
-
-/// A live tile's back face: a headline over a couple of detail lines.
-fn back(
-    headline: String,
-    lines: Vec<String>,
-) -> impl FnOnce(TileSize, Hsla) -> gpui::Div + 'static {
-    move |tile_size, _| {
-        let big = if tile_size == TileSize::Small {
-            size::MEDIUM
-        } else {
-            size::LARGE
-        };
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .p(u(10.))
-            .pb(u(26.))
-            .gap(u(2.))
-            .text_color(gpui::white())
-            .child(
-                div()
-                    .text_size(u(big))
-                    .line_height(u(big + 4.))
-                    .child(headline),
-            )
-            .children(lines.into_iter().map(|l| {
-                div()
-                    .text_size(u(size::SMALL))
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .child(l)
-            }))
-    }
-}
 
 pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
     let live: Vec<_> = store.live_runs().collect();
@@ -69,13 +33,13 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
             .count(live.len() as u32);
         match live.first() {
             Some(r) => t
-                .back(back(
+                .back_text(
                     r.code.clone(),
                     vec![
                         format!("{} · OD {}", r.phase.as_str(), r.od600),
                         r.vessel.clone(),
                     ],
-                ))
+                )
                 .phase(0.05),
             None => t,
         }
@@ -89,10 +53,10 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
             .color(Accent::Crimson.color());
         match open.first() {
             Some(i) => t
-                .back(back(
+                .back_text(
                     i.code.clone(),
                     vec![i.title.clone(), i.severity.as_str().into()],
-                ))
+                )
                 .phase(0.35),
             None => t,
         }
@@ -105,13 +69,13 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
             .count(en_route as u32);
         match store.next_shipment() {
             Some(s) => t
-                .back(back(
+                .back_text(
                     format!("{} {}", s.code, s.eta),
                     vec![
                         format!("→ {}", s.destination),
                         format!("{} · {} · {} vials", s.stage.as_str(), s.courier, s.vials),
                     ],
-                ))
+                )
                 .phase(0.6)
                 .period(15.),
             None => t,
@@ -131,10 +95,10 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
         // Ticks every two seconds, so this face is always current.
         match store.worst_sensor() {
             Some(s) => t
-                .back(back(
+                .back_text(
                     format!("{} {}", reading(s), s.unit),
                     vec![s.code.clone(), s.zone.to_lowercase()],
-                ))
+                )
                 .phase(0.18)
                 .period(12.),
             None => t,
@@ -148,10 +112,10 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
             .count(expiring.len() as u32);
         match expiring.first() {
             Some(l) => t
-                .back(back(
+                .back_text(
                     l.expires.clone(),
                     vec![l.name.clone(), l.code.clone()],
-                ))
+                )
                 .phase(0.8),
             None => t,
         }
@@ -164,10 +128,10 @@ pub fn render(store: &Store, nav: &Nav, _cx: &App) -> PageView {
             .count(count as u32)
     };
     let freezer = small("tile-freezer", "freezer", Icon::Snow, 0)
-        .back(back(
+        .back_text(
             format!("{} %", filled * 100 / slots.max(1)),
             vec![format!("{filled} vials")],
-        ))
+        )
         .phase(0.45)
         .period(10.);
 
