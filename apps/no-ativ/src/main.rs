@@ -20,6 +20,8 @@ fn main() {
         .with_assets(gpui_metro::Assets::new())
         .run(|cx| {
             gpui_metro::init(cx);
+            // Live tiles slide together every 3 s; between waves nothing is drawn.
+            gpui_metro::motion::set_live_tile_beat(Some(3.), cx);
             app::bind_keys(cx);
             let boot = std::env::var("NO_ATIV_PAGE").ok();
             let screen = size(px(1280.), px(820.));

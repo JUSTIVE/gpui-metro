@@ -8,7 +8,7 @@
 //! cargo run --release -p perf-incubator -- --show live-tiles-60 # just look
 //! ```
 //!
-//! Options: `--secs N` (measure for N seconds, default 20), `--warmup N`
+//! Options: `--beat N` (live tiles slide together every N seconds), `--secs N` (measure for N seconds, default 20), `--warmup N`
 //! (default 3), `--out FILE` (also write the table there).
 //!
 //! Each scene is measured in the same window, one after another: CPU % is
@@ -114,18 +114,21 @@ struct Options {
     scenes: Vec<Scene>,
     secs: u64,
     warmup: u64,
+    /// Live tiles slide together on this beat (seconds).
+    beat: Option<f32>,
     out: Option<String>,
     show_only: bool,
 }
 
 fn options() -> Options {
-    let mut o = Options { scenes: Vec::new(), secs: 20, warmup: 3, out: None, show_only: false };
+    let mut o = Options { scenes: Vec::new(), secs: 20, warmup: 3, beat: None, out: None, show_only: false };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--secs" => o.secs = args.next().and_then(|v| v.parse().ok()).unwrap_or(o.secs),
             "--warmup" => o.warmup = args.next().and_then(|v| v.parse().ok()).unwrap_or(o.warmup),
             "--out" => o.out = args.next(),
+            "--beat" => o.beat = args.next().and_then(|v| v.parse().ok()),
             "--show" => o.show_only = true,
             name => match Scene::find(name) {
                 Some(s) => o.scenes.push(s),
@@ -329,6 +332,7 @@ fn main() {
     let o = options();
     gpui_platform::application().with_assets(gpui_metro::Assets::new()).run(move |cx: &mut App| {
         gpui_metro::init(cx);
+        gpui_metro::motion::set_live_tile_beat(o.beat, cx);
         let bounds = Bounds::centered(None, size(px(1280.), px(900.)), cx);
         cx.open_window(
             WindowOptions {

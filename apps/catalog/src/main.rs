@@ -21,6 +21,8 @@ use crate::{app::Catalog, pages::Page};
 fn main() {
     gpui_platform::application().with_assets(gpui_metro::Assets::new()).run(|cx: &mut App| {
         gpui_metro::init(cx);
+        // Live tiles slide together every 3 s; between waves nothing is drawn.
+        gpui_metro::motion::set_live_tile_beat(Some(3.), cx);
         if std::env::var("CATALOG_MODE").is_ok_and(|m| m.eq_ignore_ascii_case("light")) {
             Theme::set_mode(Mode::Light, cx);
         }

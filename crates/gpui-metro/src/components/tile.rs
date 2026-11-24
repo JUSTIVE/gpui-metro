@@ -303,11 +303,20 @@ struct PeekClock {
 /// while it slides; resting on a face, it books one wake-up for the next
 /// slide instead. (A repeating animation redrew the whole window every
 /// frame, forever, for a tile that sits still 85% of the time.)
-fn peek_clock(id: &ElementId, period: f32, phase: f32, slide: f32, window: &mut Window, cx: &mut App) -> f32 {
+fn peek_clock(id: &ElementId, period: f32, phase: f32, window: &mut Window, cx: &mut App) -> (f32, f32) {
     let key = ElementId::from((SharedString::from(format!("{id}-peek")), 0usize));
     let clock = window.use_keyed_state(key, cx, |_, _| PeekClock { start: Instant::now(), wake: None });
     let now = Instant::now();
-    let start = clock.read(cx).start;
+    // On a beat (`motion::set_live_tile_beat`) every tile counts from the
+    // same moment, so their slides coincide; otherwise from its own start.
+    let (start, period, phase) = match motion::live_tile_beat(cx) {
+        Some(beat) => {
+            let (period, phase) = motion::on_beat(period, phase, PEEK_SLIDE_SECS, beat);
+            (motion::ambient_epoch(cx), period, phase)
+        }
+        None => (clock.read(cx).start, period, phase),
+    };
+    let slide = PEEK_SLIDE_SECS / period;
     let t = (now.saturating_duration_since(start).as_secs_f32() / period + phase).fract();
     match peek_wait(t, slide) {
         // Mid-slide: the next frame on the shared ambient clock.
@@ -332,7 +341,7 @@ fn peek_clock(id: &ElementId, period: f32, phase: f32, slide: f32, window: &mut 
             }
         }
     }
-    t
+    (t, slide)
 }
 
 /// A live tile's two faces (the default front and a text back) painted
@@ -524,7 +533,7 @@ impl Tile {
     /// itself; plus everything the tile adds (size, colours, title, icon,
     /// count, cycle, whether it takes clicks). A theme or accent change then
     /// redraws it too. `None`: the faces are closures it can't see into.
-    fn cache_key(&self, bg: Hsla, ink: Hsla, font: &SharedString, reduced: bool) -> Option<u64> {
+    fn cache_key(&self, bg: Hsla, ink: Hsla, font: &SharedString, reduced: bool, beat: Option<f32>) -> Option<u64> {
         let known = self.content_key.is_some() || (self.front.is_none() && self.back.is_none());
         known.then(|| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
@@ -536,6 +545,7 @@ impl Tile {
                 [c.h, c.s, c.l, c.a].map(f32::to_bits).hash(&mut k);
             }
             [self.unit, self.gap, self.period, self.phase].map(f32::to_bits).hash(&mut k);
+            beat.map(f32::to_bits).hash(&mut k);
             k.finish()
         })
     }
@@ -569,8 +579,7 @@ impl Tile {
         // The usual live tile (default front, text back) is painted directly.
         let text_back = if self.front.is_none() && self.back.is_none() && !reduced { self.back_text.take() } else { None };
         let body: AnyElement = if let Some((headline, lines)) = text_back {
-            let slide = PEEK_SLIDE_SECS / self.period;
-            let t = peek_clock(&self.id, self.period, self.phase, slide, window, cx);
+            let (t, slide) = peek_clock(&self.id, self.period, self.phase, window, cx);
             let faces = PeekFaces {
                 size,
                 w,
@@ -599,8 +608,7 @@ impl Tile {
             });
             match back {
                 Some(back) if !reduced => {
-                    let slide = PEEK_SLIDE_SECS / self.period;
-                    let t = peek_clock(&self.id, self.period, self.phase, slide, window, cx);
+                    let (t, slide) = peek_clock(&self.id, self.period, self.phase, window, cx);
                     // The strip holds both faces stacked; it rides up by one
                     // face. Resting, only the face on show is drawn.
                     let offset = peek_offset(t, slide);
@@ -641,7 +649,8 @@ impl RenderOnce for Tile {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = Theme::palette(cx);
         let bg = self.color.unwrap_or(p.accent);
-        let key = self.cache_key(bg, p.accent_ink, &Theme::font(cx), Theme::get(cx).reduced_motion);
+        let beat = motion::live_tile_beat(cx);
+        let key = self.cache_key(bg, p.accent_ink, &Theme::font(cx), Theme::get(cx).reduced_motion, beat);
         let (w, h) = self.size.pixels(self.unit, self.gap);
         let view = window.use_keyed_state(
             ElementId::from((SharedString::from(format!("{}-view", self.id)), 0usize)),

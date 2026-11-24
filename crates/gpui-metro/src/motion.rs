@@ -98,6 +98,45 @@ fn ensure_ambient(cx: &mut App) {
     }
 }
 
+/// The beat live tiles slide on, if any; see [`set_live_tile_beat`].
+struct LiveTileBeat(Option<f32>);
+
+impl gpui::Global for LiveTileBeat {}
+
+/// Puts every live tile's slides on a shared beat, `seconds` apart (`None`,
+/// the default: each tile keeps its own time). Left alone, tiles with
+/// different periods and phases nearly always have one mid-slide somewhere,
+/// so a start screen draws frames all the time. On a beat they slide
+/// together, in waves, and between waves nothing is drawn at all. Each
+/// tile's period becomes the nearest whole number of beat pairs and its
+/// phase the nearest beat, so tiles still take turns.
+pub fn set_live_tile_beat(seconds: Option<f32>, cx: &mut App) {
+    cx.set_global(LiveTileBeat(seconds.map(|s| s.max(1.))));
+    cx.refresh_windows();
+}
+
+/// The beat set by [`set_live_tile_beat`].
+pub fn live_tile_beat(cx: &App) -> Option<f32> {
+    cx.try_global::<LiveTileBeat>().and_then(|b| b.0)
+}
+
+/// When the ambient clock started: what beats are counted from.
+pub fn ambient_epoch(cx: &mut App) -> std::time::Instant {
+    ensure_ambient(cx);
+    cx.global::<Ambient>().epoch
+}
+
+/// A cycle of `period` seconds at `phase` (0–1), moved onto a beat: the
+/// period and phase to use, counting from the ambient epoch, so that both
+/// of the cycle's slides (each `slide` seconds long, ending at the half and
+/// at the end of the cycle) start on a beat.
+pub fn on_beat(period: f32, phase: f32, slide: f32, beat: f32) -> (f32, f32) {
+    let period = (period / (2. * beat)).round().max(1.) * 2. * beat;
+    let beats = (phase * period / beat).round();
+    let phase = 0.5 - slide / period - beats * beat / period;
+    (period, phase.rem_euclid(1.))
+}
+
 /// `after`, pushed back to the ambient clock's next tick: for a timer that
 /// wakes ambient motion later (a live tile's next slide), so the frame it
 /// causes is one the clock draws anyway instead of an extra one between.
@@ -752,6 +791,21 @@ pub fn generation_id(base: &str, generation: usize) -> ElementId {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cycle_on_a_beat_starts_both_slides_on_it() {
+        let (beat, slide) = (3., 0.9);
+        for (period, phase) in [(9., 0.), (12., 0.37), (15., 0.9), (7., 0.5)] {
+            let (p, ph) = on_beat(period, phase, slide, beat);
+            assert_eq!((p / (2. * beat)).fract(), 0., "a whole number of beat pairs ({p})");
+            // Slides start where the cycle reaches 0.5 - slide/p and 1 - slide/p.
+            for at in [0.5 - slide / p, 1. - slide / p] {
+                let secs = (at - ph).rem_euclid(1.) * p;
+                let off = (secs / beat).round() * beat - secs;
+                assert!(off.abs() < 1e-3, "period {period} phase {phase}: slide {off} s off the beat");
+            }
+        }
+    }
 
     #[test]
     fn ambient_ticks_land_on_one_grid() {
