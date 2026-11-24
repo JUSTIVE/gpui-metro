@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gpui-metro", "apps/catalog", "apps/no-ativ", "apps/perf-incubator", "crates/nsh-metro", "apps/nsh-hello", "apps/nsh-perf-incubator"]
+members = ["crates/gpui-metro", "apps/catalog", "apps/no-ativ", "apps/perf-incubator", "crates/nsh-metro", "apps/nsh-hello", "apps/nsh-perf-incubator", "apps/nsh-catalog", "apps/nsh-no-ativ"]
 
 [workspace.package]
 edition = "2024"
