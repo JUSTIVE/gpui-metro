@@ -98,7 +98,22 @@ impl Scene {
 struct Row {
     scene: String,
     cpu: f64,
+    ws: f64,
     fps: f64,
+}
+
+/// WindowServer's CPU seconds so far, from `ps` (0 if it can't be read).
+/// The compositor does part of every app's drawing; the nsh port's
+/// incubator reports it too, so the two can be compared whole.
+fn window_server_seconds() -> f64 {
+    let out = std::process::Command::new("ps").args(["-axco", "time=,comm="]).output();
+    let Ok(out) = out else { return 0. };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| l.trim_end().ends_with("WindowServer"))
+        .filter_map(|l| l.split_whitespace().next())
+        .map(|t| t.split(':').fold(0., |acc, part| acc * 60. + part.parse::<f64>().unwrap_or(0.)))
+        .sum()
 }
 
 /// User + system CPU seconds this process has used.
@@ -170,16 +185,21 @@ impl Lab {
                     return;
                 }
                 cx.background_executor().timer(Duration::from_secs(o.warmup)).await;
-                let (c0, f0, t0) = (cpu_seconds(), counter.get(), Instant::now());
+                let (c0, w0, f0, t0) = (cpu_seconds(), window_server_seconds(), counter.get(), Instant::now());
                 cx.background_executor().timer(Duration::from_secs(o.secs)).await;
-                let (c1, f1, dt) = (cpu_seconds(), counter.get(), t0.elapsed().as_secs_f64());
-                let row = Row { scene: scene.name(), cpu: (c1 - c0) / dt * 100., fps: (f1 - f0) as f64 / dt };
-                eprintln!("{:<20} {:>6.1} % CPU {:>6.1} frames/s", row.scene, row.cpu, row.fps);
+                let (c1, w1, f1, dt) = (cpu_seconds(), window_server_seconds(), counter.get(), t0.elapsed().as_secs_f64());
+                let row = Row {
+                    scene: scene.name(),
+                    cpu: (c1 - c0) / dt * 100.,
+                    ws: (w1 - w0) / dt * 100.,
+                    fps: (f1 - f0) as f64 / dt,
+                };
+                eprintln!("{:<20} {:>6.1} % CPU {:>6.1} % WindowServer {:>6.1} frames/s", row.scene, row.cpu, row.ws, row.fps);
                 rows.push(row);
             }
-            let mut table = String::from("| scene | CPU % | frames/s |\n|---|---:|---:|\n");
+            let mut table = String::from("| scene | CPU % | WindowServer CPU % | frames/s |\n|---|---:|---:|---:|\n");
             for r in &rows {
-                table += &format!("| {} | {:.1} | {:.1} |\n", r.scene, r.cpu, r.fps);
+                table += &format!("| {} | {:.1} | {:.1} | {:.1} |\n", r.scene, r.cpu, r.ws, r.fps);
             }
             println!("{table}");
             if let Some(path) = o.out {
