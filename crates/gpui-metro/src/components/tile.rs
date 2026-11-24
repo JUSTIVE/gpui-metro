@@ -132,6 +132,8 @@ pub struct Tile {
     icon: Option<Icon>,
     count: Option<u32>,
     color: Option<Hsla>,
+    /// The tile's lettering; see [`Tile::ink`].
+    ink: Option<Hsla>,
     front: Option<Face>,
     back: Option<Face>,
     /// Seconds for a full front→back→front cycle.
@@ -155,6 +157,7 @@ pub fn tile(id: impl Into<ElementId>, size: TileSize) -> Tile {
         icon: None,
         count: None,
         color: None,
+        ink: None,
         front: None,
         back: None,
         period: 12.,
@@ -184,6 +187,13 @@ impl Tile {
     /// Override the accent background.
     pub fn color(mut self, color: Hsla) -> Self {
         self.color = Some(color);
+        self
+    }
+    /// Override the lettering (title, count, icon, text back), which is
+    /// otherwise the theme's `accent_ink`. For a fill the accent ink doesn't
+    /// read on — a pale [`Tile::color`], or an app's own one-ink palette.
+    pub fn ink(mut self, ink: Hsla) -> Self {
+        self.ink = Some(ink);
         self
     }
     /// Replace the default front face (icon + count). The closure gets the
@@ -556,7 +566,7 @@ impl Tile {
         let font = Theme::font(cx);
         let reduced = Theme::get(cx).reduced_motion;
         let bg = self.color.unwrap_or(p.accent);
-        let ink = p.accent_ink;
+        let ink = self.ink.unwrap_or(p.accent_ink);
         let (w, h) = self.size.pixels(self.unit, self.gap);
         let size = self.size;
 
@@ -650,7 +660,7 @@ impl RenderOnce for Tile {
         let p = Theme::palette(cx);
         let bg = self.color.unwrap_or(p.accent);
         let beat = motion::live_tile_beat(cx);
-        let key = self.cache_key(bg, p.accent_ink, &Theme::font(cx), Theme::get(cx).reduced_motion, beat);
+        let key = self.cache_key(bg, self.ink.unwrap_or(p.accent_ink), &Theme::font(cx), Theme::get(cx).reduced_motion, beat);
         let (w, h) = self.size.pixels(self.unit, self.gap);
         let view = window.use_keyed_state(
             ElementId::from((SharedString::from(format!("{}-view", self.id)), 0usize)),
