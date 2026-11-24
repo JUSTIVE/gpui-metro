@@ -50,6 +50,8 @@ pub struct DemoState {
     /// Turnstile demo: entrance replays, and how slowly to play it.
     pub turnstile_replays: usize,
     pub turnstile_exits: usize,
+    /// Tiles pinned into the middle of the turnstile demo's grid.
+    pub pinned: usize,
     // navigation
     pub pivot: usize,
     pub panorama: usize,
@@ -106,6 +108,7 @@ impl DemoState {
             leaving: false,
             turnstile_replays: 0,
             turnstile_exits: 0,
+            pinned: 0,
             pivot: 0,
             panorama: 0,
             app_bar_minimized: false,

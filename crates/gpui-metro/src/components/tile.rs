@@ -968,6 +968,131 @@ impl Cell {
     }
 }
 
+/// How long a tile takes to slide to a new place when the grid reflows
+/// (a tile inserted, removed or resized ahead of it).
+pub const REFLOW: Duration = Duration::from_millis(400);
+/// Gap between rows as they slide: the rows nearest the change go first,
+/// so the push travels down the grid.
+const REFLOW_STEP: Duration = Duration::from_millis(30);
+const REFLOW_WAVE_MAX: Duration = Duration::from_millis(150);
+/// A tile new to the grid waits this long for the others to make room,
+/// then turns in.
+const ARRIVE_AFTER: Duration = Duration::from_millis(120);
+
+/// A tile sliding from where it was to where it now belongs.
+#[derive(Clone, Copy, Debug)]
+struct Move {
+    from: (f32, f32),
+    to: (f32, f32),
+    at: Instant,
+    delay: Duration,
+}
+
+impl Move {
+    /// Where the tile is drawn at `now`, and whether it is still moving.
+    fn at(&self, now: Instant) -> ((f32, f32), bool) {
+        let p = (since(self.at, self.delay, now) / REFLOW.as_secs_f32()).clamp(0., 1.);
+        let e = ease_out_exp6(p);
+        ((self.from.0 + (self.to.0 - self.from.0) * e, self.from.1 + (self.to.1 - self.from.1) * e), p < 1.)
+    }
+}
+
+/// Where each tile was last placed, so a change in the tiles slides the
+/// ones that moved instead of jumping them (the start screen making room
+/// for a pinned tile), and turns in the ones that are new.
+#[derive(Default)]
+struct Reflow {
+    placed: std::collections::HashMap<ElementId, (f32, f32)>,
+    moves: std::collections::HashMap<ElementId, Move>,
+    /// Tiles new since the grid first appeared, and when they arrived.
+    arrived: std::collections::HashMap<ElementId, Instant>,
+    mounted: bool,
+}
+
+/// Start delays for a reflow: the moving tiles' rows, nearest the change
+/// first. `rows` are the moving tiles' new rows; `origin` the row of the
+/// change.
+pub fn reflow_schedule(rows: &[usize], origin: usize) -> Vec<Duration> {
+    let mut dist: Vec<usize> = rows.iter().map(|&r| r.abs_diff(origin)).collect();
+    let mut ranks = dist.clone();
+    ranks.sort_unstable();
+    ranks.dedup();
+    let step = match ranks.len() {
+        0 | 1 => REFLOW_STEP,
+        n => REFLOW_STEP.min(REFLOW_WAVE_MAX / (n as u32 - 1)),
+    };
+    for d in dist.iter_mut() {
+        *d = ranks.binary_search(d).unwrap_or(0);
+    }
+    dist.iter().map(|&r| step * r as u32).collect()
+}
+
+impl Reflow {
+    /// Brings the record up to date with this frame's tiles (`id`, origin
+    /// in px, row in grid units) and returns, per tile, where to draw it and
+    /// how far it has turned in (90° = not yet), plus whether anything is
+    /// still moving.
+    fn update(&mut self, tiles: &[(ElementId, (f32, f32), usize)], now: Instant) -> (Vec<((f32, f32), f32)>, bool) {
+        // Finished motion is forgotten.
+        self.moves.retain(|_, m| m.at(now).1);
+        self.arrived.retain(|_, at| now.saturating_duration_since(*at) < ARRIVE_AFTER + ENTER);
+        let mounted = self.mounted;
+        // What moved, and where the change starts (the topmost new or moved tile).
+        let mut changed: Vec<(usize, (f32, f32))> = Vec::new();
+        let mut origin_row = usize::MAX;
+        for (ix, (id, to, row)) in tiles.iter().enumerate() {
+            match self.placed.get(id) {
+                Some(&was) if was != *to => {
+                    let from = self.moves.get(id).map_or(was, |m| m.at(now).0);
+                    changed.push((ix, from));
+                    origin_row = origin_row.min(*row);
+                }
+                None if mounted => {
+                    self.arrived.insert(id.clone(), now);
+                    origin_row = origin_row.min(*row);
+                }
+                _ => {}
+            }
+        }
+        if !changed.is_empty() {
+            let rows: Vec<usize> = changed.iter().map(|&(ix, _)| tiles[ix].2).collect();
+            let delays = reflow_schedule(&rows, if origin_row == usize::MAX { 0 } else { origin_row });
+            for (&(ix, from), delay) in changed.iter().zip(delays) {
+                let (id, to, _) = &tiles[ix];
+                self.moves.insert(id.clone(), Move { from, to: *to, at: now, delay });
+            }
+        }
+        self.placed = tiles.iter().map(|(id, to, _)| (id.clone(), *to)).collect();
+        self.moves.retain(|id, _| self.placed.contains_key(id));
+        self.mounted = true;
+
+        let mut moving = false;
+        let poses = tiles
+            .iter()
+            .map(|(id, to, _)| {
+                let at = match self.moves.get(id) {
+                    Some(m) => {
+                        let (p, running) = m.at(now);
+                        moving |= running;
+                        p
+                    }
+                    None => *to,
+                };
+                let turned = match self.arrived.get(id) {
+                    Some(&t) => {
+                        let e = since(t, ARRIVE_AFTER, now);
+                        moving = true;
+                        if e < 0. { ENTER_FROM_DEG } else { ENTER_FROM_DEG * (1. - ease_out_exp6(e / ENTER.as_secs_f32())) }
+                    }
+                    None => 0.,
+                };
+                (at, turned)
+            })
+            .collect();
+        (poses, moving)
+    }
+}
+
 /// The grid's turnstile clock. Tiles are drawn from it every frame (no
 /// animation elements), so a pressed tile stays the same element from its
 /// entrance through its exit.
@@ -1033,6 +1158,24 @@ impl RenderOnce for TileGrid {
 
         let reduced = Theme::get(cx).reduced_motion;
         let now = Instant::now();
+        // Tiles that moved since the last frame slide to their new places;
+        // new ones turn in once there is room.
+        let reflow = window.use_keyed_state(
+            ElementId::from((SharedString::from(format!("{}-reflow", self.id)), 0usize)),
+            cx,
+            |_, _| Reflow::default(),
+        );
+        let placements: Vec<(ElementId, (f32, f32), usize)> =
+            self.tiles.iter().zip(&origins).zip(&positions).map(|((t, &o), &(_, r))| (t.id.clone(), o, r)).collect();
+        let (reflowed, reflowing) = reflow.update(cx, |r, _| {
+            if reduced {
+                *r = Reflow { mounted: true, ..Default::default() };
+                r.placed = placements.iter().map(|(id, o, _)| (id.clone(), *o)).collect();
+                (placements.iter().map(|(_, o, _)| (*o, 0.)).collect(), false)
+            } else {
+                r.update(&placements, now)
+            }
+        });
         let motion = (self.turnstile && !reduced).then(|| {
             window.use_keyed_state(self.id.clone(), cx, |_, _| GridMotion {
                 entered_at: Instant::now(),
@@ -1141,13 +1284,17 @@ impl RenderOnce for TileGrid {
                 let (tw, th) = t.size.pixels(unit, gap);
                 let (degrees, visible, running) = pose(ix);
                 moving |= running;
+                let _ = (x, y);
+                let ((x, y), arriving) = reflowed[ix];
+                let degrees = degrees.max(arriving);
+                let visible = visible && arriving < ENTER_FROM_DEG;
                 let cell = Cell { x, y, w: tw, h: th, hinge };
                 layers.push((cell.depth(degrees), cell.render(t.metrics(unit, gap), degrees, visible)));
             });
         // Stable: tiles at the same depth keep their order.
         layers.sort_by(|a, b| b.0.total_cmp(&a.0));
         let tiles = layers.into_iter().map(|(_, el)| el);
-        if moving {
+        if moving || reflowing {
             window.request_animation_frame();
         }
 
@@ -1159,6 +1306,38 @@ impl RenderOnce for TileGrid {
 mod tests {
     use super::TileSize::*;
     use super::*;
+
+    #[test]
+    fn a_reflow_pushes_out_from_the_change() {
+        // Rows 2, 2, 4, 6 move after a change at row 2: row 2 first, then 4, then 6.
+        let d = reflow_schedule(&[2, 2, 4, 6], 2);
+        assert_eq!(d[0], d[1]);
+        assert!(d[0] < d[2] && d[2] < d[3], "{d:?}");
+        assert!(reflow_schedule(&(0..40).collect::<Vec<_>>(), 0).iter().all(|&x| x <= REFLOW_WAVE_MAX));
+    }
+
+    #[test]
+    fn an_inserted_tile_slides_the_ones_after_it_and_turns_in() {
+        let id = |s: &str| ElementId::from(SharedString::from(s.to_string()));
+        let mut r = Reflow::default();
+        let t0 = Instant::now();
+        let before = vec![(id("a"), (0., 0.), 0), (id("b"), (111., 0.), 0)];
+        let (poses, moving) = r.update(&before, t0);
+        assert!(!moving, "the first frame places, it doesn't animate");
+        assert_eq!(poses[1].0, (111., 0.));
+        // "n" goes in between: "b" moves along.
+        let after = vec![(id("a"), (0., 0.), 0), (id("n"), (111., 0.), 0), (id("b"), (222., 0.), 0)];
+        let (poses, moving) = r.update(&after, t0);
+        assert!(moving);
+        assert_eq!(poses[2].0, (111., 0.), "b starts from where it was");
+        assert_eq!(poses[1].1, ENTER_FROM_DEG, "the new tile waits edge-on");
+        assert_eq!(poses[0].1, 0.);
+        let later = t0 + REFLOW + ARRIVE_AFTER + ENTER;
+        let (poses, moving) = r.update(&after, later);
+        assert!(!moving);
+        assert_eq!(poses[2].0, (222., 0.));
+        assert_eq!(poses[1].1, 0.);
+    }
 
     #[test]
     fn smalls_fill_a_block_before_moving_on() {

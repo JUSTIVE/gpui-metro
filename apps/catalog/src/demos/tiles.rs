@@ -196,7 +196,7 @@ pub fn turnstile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
             None => t,
         }
     };
-    let tiles = vec![
+    let mut tiles = vec![
         again("ts-mail", TileSize::Medium, Icon::Mail, None).title("mail"),
         again("ts-phone", TileSize::Small, Icon::Phone, Some(Accent::Teal.color())),
         again("ts-camera", TileSize::Small, Icon::Camera, Some(Accent::Magenta.color())),
@@ -206,6 +206,15 @@ pub fn turnstile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
         again("ts-music", TileSize::Medium, Icon::Play, Some(Accent::Crimson.color())).title("music"),
         again("ts-calendar", TileSize::Medium, Icon::Calendar, None).title("calendar"),
     ];
+    // Pinned tiles go in after mail: the rest of the grid slides along to
+    // make room, and the new tile turns in.
+    const PINNED: [(TileSize, Icon); 4] =
+        [(TileSize::Small, Icon::Favorite), (TileSize::Medium, Icon::Camera), (TileSize::Small, Icon::Wifi), (TileSize::Wide, Icon::Flask)];
+    for n in (0..s.pinned).rev() {
+        let (size, icon) = PINNED[n % PINNED.len()];
+        let id = SharedString::from(format!("ts-pinned-{n}"));
+        tiles.insert(1, tile(id, size).icon(icon).color(Accent::ALL[(n * 7 + 3) % Accent::ALL.len()].color()));
+    }
     page(
         "turnstile",
         stack()
@@ -217,6 +226,12 @@ pub fn turnstile_page(s: &DemoState, cx: &mut Context<Catalog>) -> AnyElement {
                     .child(
                         gpui_metro::button("ts-replay", "replay entrance")
                             .on_click(tap(cx, |s| s.turnstile_replays += 1)),
+                    )
+                    .child(gpui_metro::button("ts-pin", "pin a tile").on_click(tap(cx, |s| s.pinned += 1)))
+                    .child(
+                        gpui_metro::button("ts-unpin", "unpin")
+                            .disabled(s.pinned == 0)
+                            .on_click(tap(cx, |s| s.pinned = s.pinned.saturating_sub(1))),
                     )
                     ,
             )
