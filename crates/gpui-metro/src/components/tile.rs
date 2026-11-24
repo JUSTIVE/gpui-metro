@@ -456,9 +456,15 @@ impl PeekFaces {
         let lh = s * (big + 4.);
         let runs = [style.to_run(self.headline.len())];
         let wrapped = window.text_system().shape_text(self.headline.clone(), s * big, &runs, Some(width), None);
-        for line in wrapped.iter().flatten() {
+        // A headline too long for the tile stops above the title, where the
+        // lines below it would stop too; its first line always shows.
+        for (k, line) in wrapped.iter().flatten().enumerate() {
+            let height = line.size(lh).height;
+            if k > 0 && y + height > floor {
+                break;
+            }
             line.paint(point(x, y), lh, gpui::TextAlign::Left, None, window, cx).ok();
-            y += line.size(lh).height;
+            y += height;
         }
         for text in &self.lines {
             y += s * 2.;
