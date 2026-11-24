@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 use std::hash::{Hash, Hasher};
 
 use gpui::{
-    AnyElement, App, ClickEvent, Context, ElementId, Hsla, InteractiveElement, IntoElement,
-    ParentElement, Render, RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement, Styled,
-    Window, div,
+    AnyElement, App, Bounds, ClickEvent, Context, ElementId, Hsla, InteractiveElement, IntoElement,
+    ParentElement, Pixels, Point, Render, RenderOnce, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Window, div, point, px,
 };
 
 use crate::theme::u;
@@ -244,60 +244,25 @@ impl Tile {
     }
 }
 
-/// A live tile's sliding body, as a view of its own: the peek's frames
-/// notify this view, which redraws one tile (see [`Tile::content_key`]).
-/// The tile hands it its faces every time the page draws it.
+/// A tile as a view of its own, so the page can keep its last drawing:
+/// a slide or a press redraws this one tile, and a tile that didn't change
+/// is reused whole (see [`Tile::content_key`]). The tile hands it itself
+/// every time the page draws it.
 #[derive(Default)]
-struct LiveBody {
-    id: Option<ElementId>,
-    front: Option<Face>,
-    back: Option<Face>,
-    size: Option<TileSize>,
-    bg: Option<Hsla>,
-    ink: Option<Hsla>,
-    title: Option<SharedString>,
-    w: f32,
-    h: f32,
-    period: f32,
-    phase: f32,
+struct TileView {
+    tile: Option<Tile>,
+    /// The latest click handler: a reused drawing keeps the listener it
+    /// was drawn with, which calls through to this.
+    click: Option<crate::button::ClickHandler>,
     key: Option<u64>,
 }
 
-impl Render for LiveBody {
+impl Render for TileView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (Some(id), Some(front), Some(back), Some(size), Some(bg), Some(ink)) =
-            (self.id.clone(), self.front.take(), self.back.take(), self.size, self.bg, self.ink)
-        else {
-            return div().into_any_element();
-        };
-        let (w, h) = (self.w, self.h);
-        let slide = PEEK_SLIDE_SECS / self.period;
-        let t = peek_clock(&id, self.period, self.phase, slide, window, cx);
-        let title = self.title.clone();
-        let face = |content: AnyElement| {
-            div().relative().w(u(w)).h(u(h)).flex_none().overflow_hidden().child(content).children(
-                title.clone().map(|t| {
-                    div().absolute().left(u(8.)).bottom(u(6.)).text_size(u(size::SMALL)).text_color(ink).child(t)
-                }),
-            )
-        };
-        // The strip holds both faces stacked; it rides up by one face.
-        div()
-            .relative()
-            .size_full()
-            .child(
-                div()
-                    .absolute()
-                    .left_0()
-                    .top(u(-h * peek_offset(t, slide)))
-                    .w(u(w))
-                    .h(u(h * 2.))
-                    .flex()
-                    .flex_col()
-                    .child(face(front(size, bg)))
-                    .child(face(back(size, bg))),
-            )
-            .into_any_element()
+        match self.tile.take() {
+            Some(tile) => tile.draw(cx.entity().downgrade(), window, cx),
+            None => div().into_any_element(),
+        }
     }
 }
 
@@ -370,8 +335,213 @@ fn peek_clock(id: &ElementId, period: f32, phase: f32, slide: f32, window: &mut 
     t
 }
 
-impl RenderOnce for Tile {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+/// A live tile's two faces (the default front and a text back) painted
+/// directly, with no elements under it: the slide moves where they are
+/// painted, so a sliding tile costs no layout. gpui lays out every element
+/// of a view it redraws, and a face built from elements was laid out again
+/// on every frame of its slide.
+struct PeekFaces {
+    size: TileSize,
+    w: f32,
+    h: f32,
+    /// 0 = front showing, 1 = back showing.
+    offset: f32,
+    icon: Option<Icon>,
+    count: Option<u32>,
+    headline: SharedString,
+    lines: Vec<SharedString>,
+    title: Option<SharedString>,
+    ink: Hsla,
+}
+
+impl IntoElement for PeekFaces {
+    type Element = Self;
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
+/// The tile's text style at `size` px, and its line height.
+fn text_style(size: Pixels, weight: Option<gpui::FontWeight>, ink: Hsla, window: &mut Window) -> (gpui::TextStyle, Pixels) {
+    let mut style = window.text_style();
+    style.font_size = size.into();
+    style.color = ink;
+    if let Some(weight) = weight {
+        style.font_weight = weight;
+    }
+    let line_height = style.line_height_in_pixels(window.rem_size());
+    (style, line_height)
+}
+
+impl PeekFaces {
+    fn line(&self, text: &SharedString, size: Pixels, weight: Option<gpui::FontWeight>, window: &mut Window) -> (gpui::ShapedLine, Pixels) {
+        let (style, line_height) = text_style(size, weight, self.ink, window);
+        let line = window.text_system().shape_line(text.clone(), size, &[style.to_run(text.len())], None);
+        (line, line_height)
+    }
+
+    fn title(&self, at: Point<Pixels>, s: Pixels, window: &mut Window, cx: &mut App) {
+        if let Some(title) = &self.title {
+            let (line, lh) = self.line(title, s * size::SMALL, None, window);
+            let origin = point(at.x + s * 8., at.y + s * (self.h - 6.) - lh);
+            line.paint(origin, lh, gpui::TextAlign::Left, None, window, cx).ok();
+        }
+    }
+
+    /// The default front: see [`default_front`], which this matches.
+    fn front(&self, at: Point<Pixels>, s: Pixels, window: &mut Window, cx: &mut App) {
+        let small = self.size == TileSize::Small;
+        let icon_px = s * match self.size {
+            TileSize::Small => 40.,
+            TileSize::Medium | TileSize::Wide => 64.,
+            TileSize::Large => 96.,
+        };
+        let (w, h) = (s * self.w, s * self.h);
+        let count = self.count.filter(|&c| c > 0).map(|c| SharedString::from(c.to_string()));
+        let count = count.map(|c| {
+            if small {
+                self.line(&c, s * size::NORMAL, None, window)
+            } else {
+                self.line(&c, s * (size::HUGE * 0.8), Some(crate::theme::LIGHT), window)
+            }
+        });
+        // Small: the icon alone in the middle, the count in the corner.
+        // Otherwise the icon and the count side by side in the middle.
+        let beside = count.as_ref().filter(|_| !small).map(|(line, _)| line.width());
+        let icon_w = if self.icon.is_some() { icon_px } else { px(0.) };
+        let gap = if self.icon.is_some() && beside.is_some() { s * 8. } else { px(0.) };
+        let x = at.x + (w - icon_w - gap - beside.unwrap_or(px(0.))) / 2.;
+        if let Some(icon) = self.icon {
+            let bounds = Bounds::new(point(x, at.y + (h - icon_px) / 2.), gpui::size(icon_px, icon_px));
+            window.paint_svg(bounds, icon.path().into(), None, gpui::TransformationMatrix::default(), self.ink, cx).ok();
+        }
+        if let Some((line, lh)) = count {
+            let origin = if small {
+                point(at.x + w - s * 8. - line.width(), at.y + s * 4.)
+            } else {
+                point(x + icon_w + gap, at.y + (h - lh) / 2.)
+            };
+            line.paint(origin, lh, gpui::TextAlign::Left, None, window, cx).ok();
+        }
+        self.title(at, s, window, cx);
+    }
+
+    /// The text back: see [`back_text_face`], which this matches.
+    fn back(&self, at: Point<Pixels>, s: Pixels, window: &mut Window, cx: &mut App) {
+        let big = if self.size == TileSize::Small { size::MEDIUM } else { size::LARGE };
+        let width = s * (self.w - 20.);
+        let floor = at.y + s * (self.h - 26.);
+        let x = at.x + s * 10.;
+        let mut y = at.y + s * 10.;
+        let (style, _) = text_style(s * big, None, self.ink, window);
+        let lh = s * (big + 4.);
+        let runs = [style.to_run(self.headline.len())];
+        let wrapped = window.text_system().shape_text(self.headline.clone(), s * big, &runs, Some(width), None);
+        for line in wrapped.iter().flatten() {
+            line.paint(point(x, y), lh, gpui::TextAlign::Left, None, window, cx).ok();
+            y += line.size(lh).height;
+        }
+        for text in &self.lines {
+            y += s * 2.;
+            let (mut line, lh) = self.line(text, s * size::SMALL, None, window);
+            // A line with no room left under the headline isn't shown.
+            if y + lh > floor {
+                break;
+            }
+            if line.width() > width {
+                let (style, _) = text_style(s * size::SMALL, None, self.ink, window);
+                let runs = [style.to_run(text.len())];
+                let mut wrapper = window.text_system().line_wrapper(style.font(), s * size::SMALL);
+                let (cut, runs) = wrapper.truncate_line(text.clone(), width, "…", &runs, gpui::TruncateFrom::End);
+                line = window.text_system().shape_line(cut, s * size::SMALL, &runs, None);
+            }
+            line.paint(point(x, y), lh, gpui::TextAlign::Left, None, window, cx).ok();
+            y += lh;
+        }
+        self.title(at, s, window, cx);
+    }
+}
+
+impl gpui::Element for PeekFaces {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+    fn request_layout(
+        &mut self,
+        _: Option<&gpui::GlobalElementId>,
+        _: Option<&gpui::InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (gpui::LayoutId, ()) {
+        let mut style = gpui::Style::default();
+        style.size.width = u(self.w).into();
+        style.size.height = u(self.h).into();
+        (window.request_layout(style, None, cx), ())
+    }
+    fn prepaint(
+        &mut self,
+        _: Option<&gpui::GlobalElementId>,
+        _: Option<&gpui::InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut Window,
+        _: &mut App,
+    ) {
+    }
+    fn paint(
+        &mut self,
+        _: Option<&gpui::GlobalElementId>,
+        _: Option<&gpui::InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        // Design px to window px, as `u` scales everything else.
+        let s = window.rem_size() / crate::theme::REM_PX;
+        let top = bounds.origin.y - s * (self.h * self.offset);
+        window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
+            if self.offset < 1. {
+                self.front(point(bounds.origin.x, top), s, window, cx);
+            }
+            if self.offset > 0. {
+                self.back(point(bounds.origin.x, top + s * self.h), s, window, cx);
+            }
+        });
+    }
+}
+
+impl Tile {
+    /// Everything the tile shows, as far as it can tell: the caller's key,
+    /// or, with the default front and a text back (or none), the text
+    /// itself; plus everything the tile adds (size, colours, title, icon,
+    /// count, cycle, whether it takes clicks). A theme or accent change then
+    /// redraws it too. `None`: the faces are closures it can't see into.
+    fn cache_key(&self, bg: Hsla, ink: Hsla, font: &SharedString, reduced: bool) -> Option<u64> {
+        let known = self.content_key.is_some() || (self.front.is_none() && self.back.is_none());
+        known.then(|| {
+            let mut k = std::collections::hash_map::DefaultHasher::new();
+            self.content_key.hash(&mut k);
+            self.back_text.hash(&mut k);
+            (self.size, self.icon, self.count, &self.title, font.as_ref(), reduced).hash(&mut k);
+            (self.back.is_some(), self.on_click.is_some()).hash(&mut k);
+            for c in [bg, ink] {
+                [c.h, c.s, c.l, c.a].map(f32::to_bits).hash(&mut k);
+            }
+            [self.unit, self.gap, self.period, self.phase].map(f32::to_bits).hash(&mut k);
+            k.finish()
+        })
+    }
+
+    /// The tile's drawing, inside its [`TileView`].
+    fn draw(mut self, view: gpui::WeakEntity<TileView>, window: &mut Window, cx: &mut App) -> AnyElement {
         let p = Theme::palette(cx);
         let font = Theme::font(cx);
         let reduced = Theme::get(cx).reduced_motion;
@@ -392,94 +562,104 @@ impl RenderOnce for Tile {
                     .child(t)
             })
         };
+        let face = |content: AnyElement| {
+            div().relative().w(u(w)).h(u(h)).flex_none().overflow_hidden().child(content).children(label())
+        };
 
-        // What the faces show, as far as the tile can tell: the caller's key,
-        // or, with the default front and a text back, the text itself; plus
-        // everything the tile adds (size, colours, title, icon, count). A
-        // theme or accent change then redraws the faces too.
-        let known = self.content_key.is_some() || (self.front.is_none() && self.back_text.is_some());
-        let key = known.then(|| {
-            let mut k = std::collections::hash_map::DefaultHasher::new();
-            self.content_key.hash(&mut k);
-            self.back_text.hash(&mut k);
-            (size, self.icon, self.count, &self.title, font.as_ref()).hash(&mut k);
-            for c in [bg, ink] {
-                [c.h, c.s, c.l, c.a].map(f32::to_bits).hash(&mut k);
-            }
-            [w, h].map(f32::to_bits).hash(&mut k);
-            k.finish()
-        });
-        let back = self.back.or_else(|| {
-            self.back_text.map(|(headline, lines)| -> Face {
-                Box::new(move |size, _| back_text_face(size, headline, lines, ink))
-            })
-        });
-        let body: AnyElement = match back {
-            Some(back) if !reduced => {
-                let (icon, count) = (self.icon, self.count);
-                let front: Face = match self.front {
-                    Some(f) => f,
-                    None => Box::new(move |s, _| default_front(s, icon, count, ink)),
-                };
-                let view = window.use_keyed_state(
-                    ElementId::from((SharedString::from(format!("{}-live", self.id)), 0usize)),
-                    cx,
-                    |_, _| LiveBody::default(),
-                );
-                // Drawn afresh when what it shows changed (or nothing says),
-                // and from its last drawing otherwise.
-                let fresh = key.is_none() || view.read(cx).key != key;
-                let (id, title, period, phase) = (self.id.clone(), self.title.clone(), self.period, self.phase);
-                view.update(cx, |v, _| {
-                    *v = LiveBody {
-                        id: Some(id),
-                        front: Some(front),
-                        back: Some(back),
-                        size: Some(size),
-                        bg: Some(bg),
-                        ink: Some(ink),
-                        title,
-                        w,
-                        h,
-                        period,
-                        phase,
-                        key,
-                    };
-                });
-                if fresh {
-                    view.into_any_element()
-                } else {
-                    view.cached(StyleRefinement::default().w(u(w)).h(u(h))).into_any_element()
-                }
-            }
-            _ => {
-                let front: AnyElement = match self.front {
+        // The usual live tile (default front, text back) is painted directly.
+        let text_back = if self.front.is_none() && self.back.is_none() && !reduced { self.back_text.take() } else { None };
+        let body: AnyElement = if let Some((headline, lines)) = text_back {
+            let slide = PEEK_SLIDE_SECS / self.period;
+            let t = peek_clock(&self.id, self.period, self.phase, slide, window, cx);
+            let faces = PeekFaces {
+                size,
+                w,
+                h,
+                offset: peek_offset(t, slide),
+                icon: self.icon,
+                count: self.count,
+                headline,
+                lines,
+                title: self.title.clone(),
+                ink,
+            };
+            faces.into_any_element()
+        } else {
+            let (icon, count) = (self.icon, self.count);
+            let front = move || -> AnyElement {
+                match self.front {
                     Some(f) => f(size, bg),
-                    None => default_front(size, self.icon, self.count, ink),
-                };
-                div()
-                    .relative()
-                    .w(u(w))
-                    .h(u(h))
-                    .flex_none()
-                    .overflow_hidden()
-                    .child(front)
-                    .children(label())
-                    .into_any_element()
+                    None => default_front(size, icon, count, ink),
+                }
+            };
+            let back = self.back.or_else(|| {
+                self.back_text.map(|(headline, lines)| -> Face {
+                    Box::new(move |size, _| back_text_face(size, headline, lines, ink))
+                })
+            });
+            match back {
+                Some(back) if !reduced => {
+                    let slide = PEEK_SLIDE_SECS / self.period;
+                    let t = peek_clock(&self.id, self.period, self.phase, slide, window, cx);
+                    // The strip holds both faces stacked; it rides up by one
+                    // face. Resting, only the face on show is drawn.
+                    let offset = peek_offset(t, slide);
+                    let strip = div().absolute().left_0().top(u(-h * offset)).w(u(w)).h(u(h * 2.)).flex().flex_col();
+                    let strip = if offset == 0. {
+                        strip.child(face(front()))
+                    } else if offset == 1. {
+                        strip.child(div().h(u(h)).flex_none()).child(face(back(size, bg)))
+                    } else {
+                        strip.child(face(front())).child(face(back(size, bg)))
+                    };
+                    div().relative().size_full().child(strip).into_any_element()
+                }
+                _ => face(front()).into_any_element(),
             }
         };
 
         let face = div().relative().w(u(w)).h(u(h)).overflow_hidden().bg(bg).font_family(font).child(body);
         match self.on_click {
             // A tappable tile tilts under the pointer.
-            Some(f) => motion::tilt(self.id, face, window, cx)
+            Some(_) => motion::tilt(self.id, face, window, cx)
                 .flex_none()
                 .w(u(w))
                 .h(u(h))
                 .cursor_pointer()
-                .on_click(move |e, w, cx| f(e, w, cx))
+                .on_click(move |e, w, cx| {
+                    if let Some(f) = view.upgrade().and_then(|v| v.read(cx).click.clone()) {
+                        f(e, w, cx)
+                    }
+                })
                 .into_any_element(),
             None => div().id(self.id).flex_none().child(face).into_any_element(),
+        }
+    }
+}
+
+impl RenderOnce for Tile {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let p = Theme::palette(cx);
+        let bg = self.color.unwrap_or(p.accent);
+        let key = self.cache_key(bg, p.accent_ink, &Theme::font(cx), Theme::get(cx).reduced_motion);
+        let (w, h) = self.size.pixels(self.unit, self.gap);
+        let view = window.use_keyed_state(
+            ElementId::from((SharedString::from(format!("{}-view", self.id)), 0usize)),
+            cx,
+            |_, _| TileView::default(),
+        );
+        // Drawn afresh when what it shows changed (or nothing says), and
+        // from its last drawing otherwise.
+        let fresh = key.is_none() || view.read(cx).key != key;
+        view.update(cx, |v, _| {
+            v.click = self.on_click.clone();
+            v.key = key;
+            v.tile = Some(self);
+        });
+        if fresh {
+            view.into_any_element()
+        } else {
+            view.cached(StyleRefinement::default().w(u(w)).h(u(h))).into_any_element()
         }
     }
 }
